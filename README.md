@@ -1,5 +1,11 @@
 # Xylem
 
+### 👉 [**Start with the interactive explainer →**](https://jarmstrong158.github.io/Xylem/)
+
+A 2-minute, plain-language walkthrough of the whole stack — with an animated demo of an agent asking a question that reaches my phone. Best on mobile. *(The rest of this README is the technical deep-dive.)*
+
+---
+
 Xylem is the hub for a multi-agent development stack that gives AI coding agents three things they normally lack — durable **memory**, decentralized **coordination**, and a **knowledge lifecycle** — as local-first MCP servers with matching remote transports. It's built for engineers running more than one agent against the same repo (and for anyone who wants to install the tools), where the hard problems are keeping decisions from evaporating between sessions and keeping two agents from stepping on each other's work. The hook: because every remote transport is a Cloudflare Worker speaking the same protocol as the local server, **your phone becomes a full peer in your agent mesh** — it can claim work, survey what your desktop is doing, and answer a question the desktop is blocked on.
 
 > In a tree, *xylem* is the transport tissue that moves water and nutrients between layers; *cambium* is the growth layer that turns them into new wood. The names are deliberate — this repo is the transport tissue that moves you to the right tool.
