@@ -143,14 +143,22 @@
   .dot{width:9px;height:9px;border-radius:50%;background:var(--line);border:0;padding:0;cursor:pointer}
   .dot.on{background:var(--accent);transform:scale(1.25)}
 
-  /* video placeholder */
-  .video-slot{
-    margin-top:22px;border:2px dashed var(--line);border-radius:var(--radius);
-    background:var(--surface-2);aspect-ratio:16/9;display:flex;flex-direction:column;
-    align-items:center;justify-content:center;text-align:center;gap:6px;color:var(--ink-soft);padding:20px;
+  /* key insight callout */
+  .keynote{
+    margin:8px 0 22px;background:var(--accent-wash);
+    border:1px solid color-mix(in srgb,var(--accent) 30%,var(--line));border-left:4px solid var(--accent);
+    border-radius:12px;padding:16px 18px;font-size:1.02rem;
   }
-  .video-slot .play-ic{font-size:2.2rem;color:var(--accent-ink)}
-  .video-slot .tag{font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink)}
+  .keynote b{color:var(--accent-ink)}
+
+  /* recorded-walkthrough note (replace with a real embed when one exists) */
+  .video-slot{
+    margin-top:18px;border:1px dashed color-mix(in srgb,var(--accent) 35%,var(--line));border-radius:12px;
+    background:var(--surface-2);display:flex;align-items:center;gap:12px;
+    color:var(--ink-soft);padding:14px 16px;font-size:.95rem;
+  }
+  .video-slot .play-ic{font-size:1.3rem;color:var(--accent-ink);flex:0 0 auto}
+  .video-slot b{color:var(--ink)}
 
   /* ---- cards ---- */
   .cards{display:grid;grid-template-columns:1fr;gap:16px}
@@ -220,7 +228,7 @@
   <p class="sub">Xylem is a small stack of tools that gives AI coding assistants three human things: a memory, a way to share a job site, and a way to reach me when they're stuck — even when I'm nowhere near my desk.</p>
   <div class="cta">
     <a class="btn" href="#flow">See how it works</a>
-    <a class="btn ghost" href="https://github.com/jarmstrong158/xylem">View on GitHub</a>
+    <a class="btn ghost" href="https://github.com/jarmstrong158/Xylem">View on GitHub</a>
   </div>
 </header>
 
@@ -230,6 +238,8 @@
     <div class="eyebrow">The couch demo</div>
     <h2>A question reaches my phone — and gets answered</h2>
     <p class="muted">Watch one loop: my laptop's agent claims a task, my phone sees it, the agent asks a question, I answer from the couch, and the agent carries on.</p>
+
+    <p class="keynote"><b>Why the phone is a real peer, not just a viewer:</b> a laptop saving through git and a phone saving through GitHub both follow the <em>same</em> rule — <em>only save if no one changed this first</em>. Because those two checks behave identically, both devices share one to-do list and no central server ever has to referee between them.</p>
 
     <div class="stage" id="stage">
       <div class="packet" id="packet" aria-hidden="true"></div>
@@ -266,16 +276,13 @@
       </div>
     </div>
 
-    <!-- ==== DEMO VIDEO EMBED SLOT — replace the block below with an <iframe>/<video> ==== -->
     <div class="video-slot" id="video-slot">
-      <span class="tag">Placeholder</span>
-      <span class="play-ic" aria-hidden="true">▶</span>
-      <strong>Demo video goes here</strong>
-      <span>Drop a real screen recording of the couch demo in this slot.</span>
+      <span class="play-ic" aria-hidden="true">🎬</span>
+      <span><b>A recorded walkthrough is coming.</b> For now, the step-through above is the live demo.</span>
     </div>
     <!--
-      TODO: paste the demo video embed here, e.g.
-      <div style="aspect-ratio:16/9">
+      TODO: when a screen recording exists, replace the .video-slot block above with a real embed, e.g.
+      <div style="aspect-ratio:16/9;margin-top:18px">
         <iframe src="https://www.youtube.com/embed/VIDEO_ID" title="Xylem demo"
                 style="width:100%;height:100%;border:0;border-radius:16px" allowfullscreen></iframe>
       </div>
@@ -304,7 +311,7 @@
       </div>
       <div class="card xylem">
         <div class="top"><span class="ic" aria-hidden="true">🌳</span><div><h3>xylem</h3><span class="tool">the hub</span></div></div>
-        <p class="analogy">The plumbing between them.</p>
+        <p class="analogy">The front desk that doesn't do the work itself — it knows the whole building and points you to the right room.</p>
       </div>
     </div>
   </div>
@@ -373,7 +380,7 @@
       <h2>Explore the stack</h2>
     </section>
     <div class="flinks">
-      <a class="flink" href="https://github.com/jarmstrong158/xylem"><span class="ic">🌳</span><span><span class="nm">xylem</span><br><span class="d">the hub — start here</span></span></a>
+      <a class="flink" href="https://github.com/jarmstrong158/Xylem"><span class="ic">🌳</span><span><span class="nm">xylem</span><br><span class="d">the hub — start here</span></span></a>
       <a class="flink" href="https://github.com/jarmstrong158/context-keeper"><span class="ic">📚</span><span><span class="nm">context-keeper</span><br><span class="d">rationale-first project memory (local)</span></span></a>
       <a class="flink" href="https://github.com/jarmstrong158/context-keeper-remote"><span class="ic">☁️</span><span><span class="nm">context-keeper-remote</span><br><span class="d">the same memory, from your phone</span></span></a>
       <a class="flink" href="https://github.com/jarmstrong158/agentsync"><span class="ic">🪧</span><span><span class="nm">agentsync</span><br><span class="d">no-server multi-agent coordination (local)</span></span></a>
