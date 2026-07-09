@@ -48,6 +48,18 @@ flowchart TB
 
 The blob-sha compare-and-swap that the remote Worker gets from the GitHub Contents API maps 1:1 onto the push-based CAS the local server gets from git — which is why a phone and a desktop can share one `claims.json` without a central server ever arbitrating between them.
 
+## Install
+
+One zero-dependency (stdlib Python 3) installer wires the whole suite into whatever coding agents you already have — Claude Code, Cursor, Windsurf, VS Code, Claude Desktop, Zed, GitHub Copilot CLI — handling both transports: stdio for the local servers, HTTP for the remote Workers.
+
+```sh
+cp install/xylem.config.example.json install/xylem.config.json   # fill in paths + Worker URLs (gitignored)
+./install.sh                    # dry-run: show exactly what would change (Windows: .\install.ps1)
+./install.sh install --apply    # write it
+```
+
+It's additive (never clobbers an existing server), backs up before every write, is idempotent, and ships a surgical `uninstall`. Worker URLs and tokens are read at install time from your untracked config or the environment — never committed. Details and the per-agent config paths it touches: **[install/README.md](install/README.md)**. Prefer to wire one tool by hand? Each per-tool install line is below.
+
 ## The tools
 
 ### Memory — context-keeper `·` context-keeper-remote

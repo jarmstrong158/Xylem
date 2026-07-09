@@ -220,7 +220,12 @@ class Adapter:
 
     @property
     def container_key(self):
-        return {"mcpServers": "mcpServers", "vscode": "servers", "zed": "context_servers"}[self.schema]
+        return {
+            "mcpServers": "mcpServers",
+            "vscode": "servers",
+            "zed": "context_servers",
+            "copilot": "mcpServers",
+        }[self.schema]
 
     def path(self):
         return self._path_fn()
@@ -238,12 +243,18 @@ class Adapter:
                 entry = {"type": "stdio", "command": server["command"], "args": server["args"]}
             elif self.schema == "zed":
                 entry = {"source": "custom", "command": server["command"], "args": server["args"]}
+            elif self.schema == "copilot":
+                entry = {"type": "local", "command": server["command"], "args": server["args"]}
             else:
                 entry = {"command": server["command"], "args": server["args"]}
             if server["env"]:
                 entry["env"] = server["env"]
+            if self.schema == "copilot":
+                entry["tools"] = ["*"]  # Copilot CLI gates tools per server; allow all.
             return entry
         # http
+        if self.schema == "copilot":
+            return {"type": "http", "url": server["url"], "tools": ["*"]}
         if self.http_style is None:
             return None
         if self.http_style == "type-url":
@@ -275,6 +286,12 @@ def _zed_settings():
     if IS_WINDOWS:
         return appdata() / "Zed" / "settings.json"
     return Path.home() / ".config" / "zed" / "settings.json"
+
+
+def _copilot_home():
+    # COPILOT_HOME replaces the entire ~/.copilot path when set.
+    override = os.environ.get("COPILOT_HOME")
+    return Path(override) if override else Path.home() / ".copilot"
 
 
 def build_adapters():
@@ -309,6 +326,11 @@ def build_adapters():
             "zed", "Zed", "zed", None,
             _zed_settings,
             lambda: _zed_settings().parent.is_dir(),
+        ),
+        Adapter(
+            "copilot-cli", "GitHub Copilot CLI", "copilot", "type-url",
+            lambda: _copilot_home() / "mcp-config.json",
+            lambda: _copilot_home().is_dir() or bool(shutil.which("copilot")),
         ),
     ]
 

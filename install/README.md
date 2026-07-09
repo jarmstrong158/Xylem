@@ -59,6 +59,7 @@ Detected agents and their MCP config files:
 | VS Code | `…/Code/User/mcp.json` | yes (`type: http`) |
 | Claude Desktop | `…/Claude/claude_desktop_config.json` | no — add remote connectors via its UI; stdio servers are merged |
 | Zed | `~/.config/zed/settings.json` | no — stdio servers only |
+| GitHub Copilot CLI | `~/.copilot/mcp-config.json` (or `$COPILOT_HOME`) | yes (`type: http`) |
 
 ## Safety
 
