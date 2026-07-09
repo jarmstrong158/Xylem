@@ -1,0 +1,61 @@
+{
+  "_comment": "Xylem suite tool manifest — DATA, not code. Each entry declares one MCP server: its transport ('stdio' for local processes, 'http' for remote Cloudflare Workers), and where its machine-specific values come from. ${NAME} placeholders are resolved at install time from environment variables (which win) or the untracked xylem.config.json. No absolute paths, URLs, or secrets live here. To flip a tool's transport or add a server, edit this file only — the installer is unchanged.",
+  "version": 1,
+  "servers": [
+    {
+      "name": "context-keeper",
+      "transport": "stdio",
+      "command": "python3",
+      "args": ["${CONTEXT_KEEPER_SERVER}"],
+      "env": {
+        "CONTEXT_KEEPER_PROJECT": "${CONTEXT_KEEPER_PROJECT}"
+      },
+      "required": ["CONTEXT_KEEPER_SERVER"]
+    },
+    {
+      "name": "context-keeper-remote",
+      "transport": "http",
+      "url": "${CONTEXT_KEEPER_REMOTE_URL}",
+      "required": ["CONTEXT_KEEPER_REMOTE_URL"]
+    },
+    {
+      "name": "agentsync",
+      "transport": "stdio",
+      "command": "python3",
+      "args": ["${AGENTSYNC_SERVER}"],
+      "env": {
+        "AGENTSYNC_REPO": "${AGENTSYNC_REPO}",
+        "AGENTSYNC_AGENT_ID": "${AGENTSYNC_AGENT_ID}",
+        "AGENTSYNC_REMOTE": "${AGENTSYNC_REMOTE}",
+        "AGENTSYNC_BRANCH": "${AGENTSYNC_BRANCH}",
+        "AGENTSYNC_PARTNER_GITHUB": "${AGENTSYNC_PARTNER_GITHUB}",
+        "AGENTSYNC_STALE_HOURS": "${AGENTSYNC_STALE_HOURS}"
+      },
+      "required": ["AGENTSYNC_SERVER", "AGENTSYNC_REPO", "AGENTSYNC_AGENT_ID"]
+    },
+    {
+      "name": "agentsync-remote",
+      "transport": "http",
+      "url": "${AGENTSYNC_REMOTE_URL}",
+      "required": ["AGENTSYNC_REMOTE_URL"]
+    },
+    {
+      "name": "cambium",
+      "transport": "stdio",
+      "command": "python3",
+      "args": ["${CAMBIUM_SERVER}"],
+      "env": {
+        "CAMBIUM_REPO": "${CAMBIUM_REPO}",
+        "CAMBIUM_AGENT_ID": "${CAMBIUM_AGENT_ID}",
+        "CAMBIUM_REMOTE": "${CAMBIUM_REMOTE}",
+        "CAMBIUM_TEAM_BRANCH": "${CAMBIUM_TEAM_BRANCH}",
+        "CAMBIUM_AGENTSYNC_BRANCH": "${CAMBIUM_AGENTSYNC_BRANCH}",
+        "CAMBIUM_ORG_REPO": "${CAMBIUM_ORG_REPO}",
+        "CAMBIUM_ORG_PR": "${CAMBIUM_ORG_PR}",
+        "CAMBIUM_PROMOTE_RECALLS": "${CAMBIUM_PROMOTE_RECALLS}",
+        "CAMBIUM_RELEASE_CAPTURE": "${CAMBIUM_RELEASE_CAPTURE}"
+      },
+      "required": ["CAMBIUM_SERVER", "CAMBIUM_REPO", "CAMBIUM_AGENT_ID"]
+    }
+  ]
+}

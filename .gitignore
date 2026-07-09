@@ -1,0 +1,7 @@
+# The real installer config carries machine paths and secret Worker URLs — never commit it.
+install/xylem.config.json
+xylem.config.json
+
+# Installer state and backups (created at runtime on a user's machine)
+install/*.bak-*
+*.bak-*

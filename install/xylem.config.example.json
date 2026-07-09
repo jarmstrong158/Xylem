@@ -1,0 +1,22 @@
+{
+  "_comment": "Copy this file to xylem.config.json (in this same install/ directory) and fill in your machine-specific values. xylem.config.json is gitignored and NEVER committed. Every key below can also be supplied as an environment variable of the same name; environment variables take precedence over this file. Only fill in the servers you actually run — a server whose required values are missing is skipped, not written half-configured.",
+
+  "_local_stdio_servers": "Absolute paths to each cloned server script, plus its per-server env values.",
+  "CONTEXT_KEEPER_SERVER": "/abs/path/to/context-keeper/server.py",
+  "CONTEXT_KEEPER_PROJECT": "/abs/path/to/your/project",
+
+  "AGENTSYNC_SERVER": "/abs/path/to/agentsync/agentsync_server.py",
+  "AGENTSYNC_REPO": "/abs/path/to/your/clone",
+  "AGENTSYNC_AGENT_ID": "your-agent-id",
+
+  "CAMBIUM_SERVER": "/abs/path/to/cambium/cambium_server.py",
+  "CAMBIUM_REPO": "/abs/path/to/your/project/clone",
+  "CAMBIUM_AGENT_ID": "your-agent-id",
+
+  "_remote_http_workers": "The full connector URL for each Worker. The token is the last path segment — the whole URL is a secret. This is why it lives here (untracked), not in servers.json.",
+  "CONTEXT_KEEPER_REMOTE_URL": "https://context-keeper-remote.<your-subdomain>.workers.dev/mcp/<your-token>",
+  "AGENTSYNC_REMOTE_URL": "https://<your-worker>.<your-subdomain>.workers.dev/mcp/<your-token>",
+
+  "_optional": "Uncomment / set any of these to override defaults. XYLEM_PYTHON forces a specific interpreter for the stdio servers (e.g. a venv); otherwise python3/python on PATH is used.",
+  "XYLEM_PYTHON": ""
+}
