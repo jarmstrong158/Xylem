@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --bg:#0b1210; --ink:#eaf2ed; --soft:#9db0a7;
+    --accent:#12a150; --accent-ink:#4fd88b; --line:#25332d;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{width:1280px;height:640px}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(900px 520px at 108% -12%, rgba(18,161,80,.30), transparent 60%),
+      radial-gradient(700px 500px at -8% 118%, rgba(18,161,80,.12), transparent 60%),
+      var(--bg);
+    color:var(--ink); overflow:hidden;
+  }
+  .frame{position:absolute;inset:0;padding:74px 80px;display:flex;flex-direction:column}
+  .frame::before{content:"";position:absolute;left:0;top:0;bottom:0;width:8px;background:linear-gradient(180deg,var(--accent),#0c6e3a)}
+
+  .eyebrow{font-size:19px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:var(--accent-ink);opacity:.95}
+  .wordmark{display:flex;align-items:center;gap:14px;margin-top:6px}
+  .wordmark .leaf{font-size:44px;line-height:1}
+  .wordmark .nm{font-size:40px;font-weight:800;letter-spacing:-.01em}
+
+  .headline{
+    margin-top:26px;font-size:62px;line-height:1.06;font-weight:800;letter-spacing:-.03em;
+  }
+  .headline .hl{color:var(--accent-ink)}
+  .sub{margin-top:24px;font-size:23px;line-height:1.42;color:var(--soft);max-width:600px}
+
+  .chips{margin-top:40px;display:flex;gap:14px;flex-wrap:wrap}
+  .chip{
+    display:flex;align-items:center;gap:10px;font-size:22px;font-weight:600;
+    padding:12px 20px;border:1.5px solid var(--line);border-radius:999px;
+    background:rgba(255,255,255,.02);
+  }
+  .chip .ic{font-size:24px}
+
+  .url{position:absolute;right:80px;bottom:74px;font:600 21px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--soft)}
+
+  /* right-side vertical transport motif */
+  .flow{position:absolute;right:96px;top:150px;width:320px;height:330px}
+  .flow .line{position:absolute;left:44px;top:36px;bottom:36px;width:3px;
+    background:repeating-linear-gradient(180deg,var(--accent) 0 10px,transparent 10px 20px);opacity:.55}
+  .node{position:absolute;left:0;display:flex;align-items:center;gap:14px}
+  .node .dot{width:90px;height:90px;border-radius:22px;display:flex;align-items:center;justify-content:center;
+    font-size:44px;background:rgba(18,161,80,.10);border:1.5px solid var(--line)}
+  .node .lab{font-size:20px;color:var(--soft)}
+  .node .lab b{display:block;color:var(--ink);font-size:22px;font-weight:700}
+  .n1{top:0}.n2{top:120px}.n3{top:240px}
+  .n2 .dot{background:rgba(18,161,80,.18);border-color:rgba(79,216,139,.5)}
+</style>
+</head>
+<body>
+  <div class="frame">
+    <div class="eyebrow">Multi-agent AI development</div>
+    <div class="wordmark"><span class="leaf">🌿</span><span class="nm">Xylem</span></div>
+
+    <div class="headline">Agents that remember,<br>coordinate, and <span class="hl">ask</span>.</div>
+    <div class="sub">Memory, coordination, and a knowledge lifecycle — local-first, with your phone as a full peer.</div>
+
+    <div class="chips">
+      <div class="chip"><span class="ic">📚</span>Memory</div>
+      <div class="chip"><span class="ic">🪧</span>Coordination</div>
+      <div class="chip"><span class="ic">🌱</span>Knowledge lifecycle</div>
+    </div>
+  </div>
+
+  <div class="flow" aria-hidden="true">
+    <div class="line"></div>
+    <div class="node n1"><span class="dot">💻</span><span class="lab"><b>Laptop agent</b>claims work</span></div>
+    <div class="node n2"><span class="dot">📋</span><span class="lab"><b>Shared board</b>one claims.json</span></div>
+    <div class="node n3"><span class="dot">📱</span><span class="lab"><b>Phone</b>answers back</span></div>
+  </div>
+
+  <div class="url">github.com/jarmstrong158/Xylem</div>
+</body>
+</html>
