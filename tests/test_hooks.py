@@ -8,9 +8,12 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from installer import merge_hooks, remove_hooks, HOOK_MARKER  # noqa: E402
+from installer import (  # noqa: E402
+    merge_hooks, remove_hooks, HOOK_MARKER, VERSION_CHECK_MARKER,
+)
 
 COMMAND = '"python" "/x/artifacts/session_start_hook.py"'
+VERSION_CHECK_COMMAND = '"python" "/x/artifacts/version_check.py"'
 
 
 class HooksTest(unittest.TestCase):
@@ -97,6 +100,57 @@ class HooksTest(unittest.TestCase):
         merge_hooks(settings, COMMAND)
         remove_hooks(settings)
         self.assertNotIn("hooks", settings)
+
+
+class TwoHookTest(unittest.TestCase):
+    """The version_check hook coexists with the session_start hook."""
+
+    def _install_both(self, settings):
+        merge_hooks(settings, COMMAND)
+        merge_hooks(settings, VERSION_CHECK_COMMAND, marker=VERSION_CHECK_MARKER)
+
+    def test_both_hooks_register_under_session_start(self):
+        settings = {}
+        self._install_both(settings)
+        groups = settings["hooks"]["SessionStart"]
+        commands = [h["command"] for g in groups for h in g["hooks"]]
+        self.assertIn(COMMAND, commands)
+        self.assertIn(VERSION_CHECK_COMMAND, commands)
+        self.assertEqual(len(groups), 2)
+
+    def test_neither_hook_duplicates_on_rerun(self):
+        settings = {}
+        self._install_both(settings)
+        self._install_both(settings)
+        self._install_both(settings)
+        groups = settings["hooks"]["SessionStart"]
+        session_groups = [
+            g for g in groups
+            if any(HOOK_MARKER in h.get("command", "") for h in g["hooks"])
+        ]
+        version_groups = [
+            g for g in groups
+            if any(VERSION_CHECK_MARKER in h.get("command", "") for h in g["hooks"])
+        ]
+        self.assertEqual(len(session_groups), 1)
+        self.assertEqual(len(version_groups), 1)
+        self.assertEqual(len(groups), 2)
+
+    def test_uninstall_removes_both_hooks(self):
+        settings = {}
+        self._install_both(settings)
+        remove_hooks(settings)
+        remove_hooks(settings, marker=VERSION_CHECK_MARKER)
+        self.assertNotIn("hooks", settings)
+
+    def test_removing_one_hook_leaves_the_other(self):
+        settings = {}
+        self._install_both(settings)
+        remove_hooks(settings, marker=VERSION_CHECK_MARKER)
+        groups = settings["hooks"]["SessionStart"]
+        commands = [h["command"] for g in groups for h in g["hooks"]]
+        self.assertIn(COMMAND, commands)
+        self.assertNotIn(VERSION_CHECK_COMMAND, commands)
 
 
 if __name__ == "__main__":
