@@ -1,6 +1,6 @@
 {
   "$schema": "https://xylem.local/manifest.schema.json",
-  "version": "1",
+  "version": 2,
   "description": "Xylem suite server declarations. The installer resolves $XYLEM_ROOT (this repo), $XYLEM_PARENT (its parent, i.e. the sibling repos directory), and $PROJECT_DIR placeholders and reads all url/token values from environment variables. No URLs or secrets are ever stored in this file.",
   "target": "claude-code",
   "servers": [

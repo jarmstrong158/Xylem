@@ -6,9 +6,16 @@ import unittest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-from installer import apply_fence, remove_fence, FENCE_BEGIN, FENCE_END  # noqa: E402
+from installer import (  # noqa: E402
+    apply_fence,
+    remove_fence,
+    fence_begin,
+    FENCE_BEGIN,
+    FENCE_END,
+)
 
 BLOCK = FENCE_BEGIN + "\nXylem content here\n" + FENCE_END
+V2_BLOCK = fence_begin(2) + "\nXylem content here\n" + FENCE_END
 
 
 class FenceTest(unittest.TestCase):
@@ -64,6 +71,35 @@ class FenceTest(unittest.TestCase):
     def test_remove_on_file_without_fence_is_noop(self):
         text = "# Just notes, no fence\n"
         self.assertEqual(remove_fence(text), text)
+
+    # -- versioned fence markers -------------------------------------------
+
+    def test_version_arg_stamps_begin_marker(self):
+        out = apply_fence("", BLOCK, version=2)
+        self.assertIn("<!-- XYLEM:BEGIN v2 -->", out)
+        self.assertNotIn(FENCE_BEGIN, out)  # unstamped marker gone
+        self.assertIn(FENCE_END, out)
+
+    def test_replace_unstamped_block_with_versioned(self):
+        original = apply_fence("# Notes\n", BLOCK)  # legacy, no stamp
+        updated = apply_fence(original, BLOCK, version=2)
+        self.assertIn("<!-- XYLEM:BEGIN v2 -->", updated)
+        self.assertEqual(updated.count(FENCE_END), 1)
+        # Exactly one begin marker of any form remains.
+        self.assertEqual(updated.count("<!-- XYLEM:BEGIN"), 1)
+
+    def test_replace_versioned_block_with_newer_version(self):
+        original = apply_fence("# Notes\n", V2_BLOCK, version=2)
+        updated = apply_fence(original, V2_BLOCK, version=3)
+        self.assertIn("<!-- XYLEM:BEGIN v3 -->", updated)
+        self.assertNotIn("<!-- XYLEM:BEGIN v2 -->", updated)
+        self.assertEqual(updated.count("<!-- XYLEM:BEGIN"), 1)
+
+    def test_remove_strips_versioned_fence(self):
+        installed = apply_fence("# Notes\n\nbody\n", BLOCK, version=2)
+        removed = remove_fence(installed)
+        self.assertNotIn("XYLEM:BEGIN", removed)
+        self.assertIn("body", removed)
 
 
 if __name__ == "__main__":
