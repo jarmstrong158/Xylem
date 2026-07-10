@@ -1,0 +1,72 @@
+{
+  "$schema": "https://xylem.local/manifest.schema.json",
+  "version": "1",
+  "description": "Xylem suite server declarations. The installer resolves $XYLEM_ROOT (this repo), $XYLEM_PARENT (its parent, i.e. the sibling repos directory), and $PROJECT_DIR placeholders and reads all url/token values from environment variables. No URLs or secrets are ever stored in this file.",
+  "target": "claude-code",
+  "servers": [
+    {
+      "name": "context-keeper",
+      "available": true,
+      "transport": "stdio",
+      "command": "python3",
+      "args": ["$XYLEM_PARENT/context-keeper/server.py"],
+      "env": {
+        "CONTEXT_KEEPER_PROJECT": "$PROJECT_DIR"
+      },
+      "artifacts": [
+        "hooks/session_start",
+        "hooks/pre_compact",
+        "hooks/stop_post_compact",
+        "hooks/commit_capture",
+        "hooks/scope_guard"
+      ]
+    },
+    {
+      "name": "agentsync",
+      "available": true,
+      "transport": "stdio",
+      "command": "python3",
+      "args": ["$XYLEM_PARENT/agentsync/agentsync_server.py"],
+      "env": {
+        "AGENTSYNC_REPO": "$PROJECT_DIR",
+        "AGENTSYNC_AGENT_ID": "$AGENT_ID",
+        "AGENTSYNC_BRANCH": "agentsync"
+      },
+      "artifacts": []
+    },
+    {
+      "name": "agentsync-remote",
+      "available": true,
+      "transport": "http",
+      "url_env_key": "AGENTSYNC_REMOTE_URL",
+      "headers": {
+        "Authorization": {
+          "env_key": "AGENTSYNC_REMOTE_TOKEN",
+          "format": "Bearer {value}"
+        }
+      },
+      "artifacts": []
+    },
+    {
+      "name": "cambium",
+      "available": true,
+      "transport": "stdio",
+      "command": "python3",
+      "args": ["$XYLEM_PARENT/cambium/cambium_server.py"],
+      "env": {
+        "CAMBIUM_REPO": "$PROJECT_DIR",
+        "CAMBIUM_AGENT_ID": "$AGENT_ID"
+      },
+      "artifacts": []
+    },
+    {
+      "name": "context-keeper-remote",
+      "available": false,
+      "transport": "http",
+      "url_env_key": "CONTEXT_KEEPER_REMOTE_URL",
+      "headers": {},
+      "artifacts": [],
+      "note": "Placeholder. Remote context-keeper Worker is not built yet; installer skips servers with available=false."
+    }
+  ]
+}
