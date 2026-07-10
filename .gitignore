@@ -10,3 +10,6 @@ xylem.local.json
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Context-keeper local memory store (machine-local, never commit)
+.context/

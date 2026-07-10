@@ -16,20 +16,30 @@ Design rules (non-negotiable):
 
 Usage:
   python3 installer.py [--dry-run] [--uninstall] [--project PATH]
+  python3 installer.py update [--dry-run] [--project PATH]
+
+The `update` verb git-pulls this repo, then re-applies the block so the deployed
+CLAUDE.md carries the current manifest version stamp. It is the one-word "yes"
+that the version_check nudge points at.
 """
 import argparse
 import difflib
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 
 # --------------------------------------------------------------------------
 # Constants
 # --------------------------------------------------------------------------
 
-FENCE_BEGIN = "<!-- XYLEM:BEGIN -->"
+FENCE_BEGIN = "<!-- XYLEM:BEGIN -->"  # legacy/unstamped begin marker (== v1)
 FENCE_END = "<!-- XYLEM:END -->"
+# Matches both the legacy unstamped begin marker and the versioned form
+# `<!-- XYLEM:BEGIN vN -->`. Group 1 is the integer version, or None if absent.
+FENCE_BEGIN_RE = re.compile(r"<!-- XYLEM:BEGIN(?: v(\d+))? -->")
 BACKUP_SUFFIX = ".xylem-backup"
 
 # Marks the SessionStart hook we own, so uninstall can find exactly it.
@@ -91,14 +101,42 @@ def resolve_placeholders(value, mapping):
 # Pure transforms (imported by the test suite)
 # --------------------------------------------------------------------------
 
-def apply_fence(text, block):
-    """Insert/replace the Xylem fenced block in CLAUDE.md text. Idempotent."""
+def fence_begin(version=None):
+    """Render the begin marker, stamped with an integer version when given."""
+    if version is None:
+        return FENCE_BEGIN
+    return "<!-- XYLEM:BEGIN v%d -->" % int(version)
+
+
+def parse_fence_version(text):
+    """Version of the Xylem block present in `text`.
+
+    Returns the integer from a `<!-- XYLEM:BEGIN vN -->` marker, 1 for a legacy
+    unstamped block (fence present but no version), or None if no fence is found.
+    A deployed block with no stamp therefore counts as v1/stale.
+    """
+    match = FENCE_BEGIN_RE.search(text)
+    if match is None:
+        return None
+    return int(match.group(1)) if match.group(1) else 1
+
+
+def apply_fence(text, block, version=None):
+    """Insert/replace the Xylem fenced block in CLAUDE.md text. Idempotent.
+
+    When `version` is given, the block's own begin marker is (re)stamped to
+    `<!-- XYLEM:BEGIN vN -->` so manifest.json stays the single source of truth
+    for the deployed stamp. An existing block is detected and replaced whether it
+    carries the old unstamped marker or any versioned one.
+    """
     block = block.strip("\n")
-    begin = text.find(FENCE_BEGIN)
+    if version is not None:
+        block = FENCE_BEGIN_RE.sub(fence_begin(version), block, count=1)
+    match = FENCE_BEGIN_RE.search(text)
     end = text.find(FENCE_END)
-    if begin != -1 and end != -1 and end > begin:
+    if match is not None and end != -1 and end > match.start():
         end_close = end + len(FENCE_END)
-        return text[:begin] + block + text[end_close:]
+        return text[:match.start()] + block + text[end_close:]
     # Append at end, separated by a blank line.
     if text and not text.endswith("\n"):
         text += "\n"
@@ -108,11 +146,15 @@ def apply_fence(text, block):
 
 
 def remove_fence(text):
-    """Remove the Xylem fenced block, leaving surrounding text intact."""
-    begin = text.find(FENCE_BEGIN)
+    """Remove the Xylem fenced block, leaving surrounding text intact.
+
+    Detects both the legacy unstamped and the versioned begin marker.
+    """
+    match = FENCE_BEGIN_RE.search(text)
     end = text.find(FENCE_END)
-    if begin == -1 or end == -1 or end < begin:
+    if match is None or end == -1 or end < match.start():
         return text
+    begin = match.start()
     end_close = end + len(FENCE_END)
     before = text[:begin].rstrip("\n")
     after = text[end_close:].lstrip("\n")
@@ -225,6 +267,15 @@ def remove_env(settings, key):
 # --------------------------------------------------------------------------
 # Settings transform assembly
 # --------------------------------------------------------------------------
+
+def manifest_version(manifest):
+    """Integer template version from the manifest; defaults to 1 if absent/bad."""
+    raw = manifest.get("version", 1)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return 1
+
 
 def enabled_servers(manifest):
     return [s for s in manifest.get("servers", []) if s.get("available", True)]
@@ -368,19 +419,28 @@ def build_mapping(project_dir):
     }
 
 
+def resolve_targets(args, claude_dir):
+    """Resolve the settings.json, CLAUDE.md, project dir, and command paths.
+
+    With --project, the block targets that project's CLAUDE.md; otherwise the
+    global CLAUDE.md under the Claude config dir.
+    """
+    settings_path = os.path.join(claude_dir, "settings.json")
+    if getattr(args, "project", None):
+        project_dir = os.path.abspath(args.project)
+        claude_md_path = os.path.join(project_dir, "CLAUDE.md")
+    else:
+        project_dir = os.getcwd()
+        claude_md_path = os.path.join(claude_dir, "CLAUDE.md")
+    commands_path = os.path.join(claude_dir, "commands", "xylem-discipline.md")
+    return settings_path, claude_md_path, project_dir, commands_path
+
+
 def plan(args):
     manifest = load_manifest()
     claude_dir = detect_claude_dir()
-    settings_path = os.path.join(claude_dir, "settings.json")
-
-    if args.project:
-        claude_md_path = os.path.join(os.path.abspath(args.project), "CLAUDE.md")
-        project_dir = os.path.abspath(args.project)
-    else:
-        claude_md_path = os.path.join(claude_dir, "CLAUDE.md")
-        project_dir = os.getcwd()
-
-    commands_path = os.path.join(claude_dir, "commands", "xylem-discipline.md")
+    settings_path, claude_md_path, project_dir, commands_path = resolve_targets(
+        args, claude_dir)
 
     planner = Planner(args.dry_run)
 
@@ -406,12 +466,75 @@ def plan(args):
     planner.set_text(settings_path, dump_json_text(settings))
 
     block = read_text(os.path.join(ROOT, "artifacts", "claude_md_block.md"))
-    planner.set_text(claude_md_path, apply_fence(read_text(claude_md_path), block))
+    version = manifest_version(manifest)
+    planner.set_text(
+        claude_md_path, apply_fence(read_text(claude_md_path), block, version))
 
     discipline = read_text(os.path.join(ROOT, "artifacts", "xylem_discipline.md"))
     planner.set_text(commands_path, discipline)
 
     return planner
+
+
+def _run_git(git_args, cwd):
+    """Run a git command, returning (ok, last_output_line). Never raises."""
+    try:
+        proc = subprocess.run(
+            ["git"] + list(git_args), cwd=cwd,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            universal_newlines=True)
+    except Exception as exc:  # git missing, cwd gone, etc. -- fail soft
+        return False, str(exc)
+    out = (proc.stdout or "").strip()
+    last = out.splitlines()[-1] if out else ""
+    return proc.returncode == 0, last
+
+
+def run_update(args):
+    """`installer.py update`: git pull the xylem repo, then re-apply the block.
+
+    Idempotent: re-runs the install plan, which replaces the content inside the
+    fences with the current manifest version stamp. Reports old -> new version
+    and which files changed. Never rewrites a block except through this verb.
+    """
+    claude_dir = detect_claude_dir()
+    _, claude_md_path, _, _ = resolve_targets(args, claude_dir)
+
+    # Version currently deployed on this machine, read before we touch anything.
+    old_version = parse_fence_version(read_text(claude_md_path))
+
+    ok, last = _run_git(["pull", "--ff-only"], ROOT)
+    if ok:
+        print("xylem: git pull -- %s" % (last or "ok"))
+    else:
+        # Fail-soft: proceed with whatever is already checked out locally.
+        print("xylem: warning: git pull failed, using local checkout",
+              file=sys.stderr)
+        if last:
+            print("xylem: %s" % last, file=sys.stderr)
+
+    new_version = manifest_version(load_manifest())
+
+    planner = plan(args)
+    for msg in planner.warnings:
+        print("xylem: warning: %s" % msg, file=sys.stderr)
+
+    if args.dry_run:
+        print("xylem: dry run -- no files will be written\n")
+        rendered = planner.render()
+        print(rendered if rendered else "xylem: nothing to do")
+        return 0
+
+    applied = planner.apply()
+
+    old_label = ("v%d" % old_version) if old_version else "none (unstamped/stale)"
+    print("xylem: update %s -> v%d" % (old_label, new_version))
+    if applied:
+        for line in applied:
+            print("xylem: %s" % line)
+    else:
+        print("xylem: already up to date -- no files changed")
+    return 0
 
 
 def main(argv=None):
@@ -422,7 +545,19 @@ def main(argv=None):
                         help="remove only Xylem-owned entries")
     parser.add_argument("--project", metavar="PATH",
                         help="target the project's CLAUDE.md instead of the global one")
+    parser.add_argument("command", nargs="?", choices=["update"],
+                        help="'update': git pull the xylem repo, then re-apply the "
+                             "block with the current version stamp")
     args = parser.parse_args(argv)
+
+    if args.command == "update":
+        if args.uninstall:
+            parser.error("'update' cannot be combined with --uninstall")
+        try:
+            return run_update(args)
+        except FileNotFoundError as exc:
+            print("xylem: %s" % exc, file=sys.stderr)
+            return 1
 
     try:
         planner = plan(args)

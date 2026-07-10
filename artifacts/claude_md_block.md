@@ -1,4 +1,4 @@
-<!-- XYLEM:BEGIN -->
+<!-- XYLEM:BEGIN v2 -->
 ## Xylem discipline
 
 This machine runs the Xylem suite (context-keeper, agentsync, cambium). Follow this discipline:
