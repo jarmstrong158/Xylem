@@ -42,8 +42,10 @@ FENCE_END = "<!-- XYLEM:END -->"
 FENCE_BEGIN_RE = re.compile(r"<!-- XYLEM:BEGIN(?: v(\d+))? -->")
 BACKUP_SUFFIX = ".xylem-backup"
 
-# Marks the SessionStart hook we own, so uninstall can find exactly it.
+# Marks the SessionStart hooks we own, so uninstall can find exactly them.
+# Each hook is identified by its script filename appearing in the command.
 HOOK_MARKER = "session_start_hook.py"
+VERSION_CHECK_MARKER = "version_check.py"
 # settings.json env key we own (points the hook at context-keeper's server.py).
 ENV_KEY = "XYLEM_CONTEXT_KEEPER_PATH"
 
@@ -285,7 +287,7 @@ def all_server_names(manifest):
 
 
 def build_settings_install(settings, manifest, mapping, ck_server_path,
-                           hook_command, warn):
+                           hook_command, version_check_command, warn):
     """Apply every Xylem install transform to a settings dict (in place)."""
     entries = {}
     for server in enabled_servers(manifest):
@@ -301,13 +303,17 @@ def build_settings_install(settings, manifest, mapping, ck_server_path,
                  % (server.get("name"), transport))
     merge_mcp_servers(settings, entries)
     merge_env(settings, ENV_KEY, ck_server_path)
+    # Two SessionStart hooks, each keyed by its own script-name marker so they
+    # register independently and neither clobbers the other on re-run.
     merge_hooks(settings, hook_command)
+    merge_hooks(settings, version_check_command, marker=VERSION_CHECK_MARKER)
     return settings
 
 
 def build_settings_uninstall(settings, manifest):
     remove_mcp_servers(settings, all_server_names(manifest))
     remove_hooks(settings)
+    remove_hooks(settings, marker=VERSION_CHECK_MARKER)
     remove_env(settings, ENV_KEY)
     return settings
 
@@ -460,9 +466,14 @@ def plan(args):
     ck_server_path = to_fwd(os.path.join(PARENT, "context-keeper", "server.py"))
     hook_script = to_fwd(os.path.join(ROOT, "artifacts", "session_start_hook.py"))
     hook_command = '"%s" "%s"' % (to_fwd(sys.executable), hook_script)
+    # Same $XYLEM_ROOT-relative resolution and interpreter as the hook above.
+    version_check_script = to_fwd(
+        os.path.join(ROOT, "artifacts", "version_check.py"))
+    version_check_command = '"%s" "%s"' % (
+        to_fwd(sys.executable), version_check_script)
 
     build_settings_install(settings, manifest, mapping, ck_server_path,
-                           hook_command, planner.warn)
+                           hook_command, version_check_command, planner.warn)
     planner.set_text(settings_path, dump_json_text(settings))
 
     block = read_text(os.path.join(ROOT, "artifacts", "claude_md_block.md"))
