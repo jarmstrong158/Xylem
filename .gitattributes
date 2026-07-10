@@ -1,0 +1,5 @@
+# Keep shell scripts LF so the shebang works on macOS/Linux regardless of host
+install.sh text eol=lf
+*.sh text eol=lf
+# PowerShell is fine either way; leave CRLF on Windows checkout
+install.ps1 text eol=crlf

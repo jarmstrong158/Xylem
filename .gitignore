@@ -1,7 +1,12 @@
-# The real installer config carries machine paths and secret Worker URLs — never commit it.
-install/xylem.config.json
-xylem.config.json
+# Xylem backups written by installer
+*.xylem-backup
 
-# Installer state and backups (created at runtime on a user's machine)
-install/*.bak-*
-*.bak-*
+# Local untracked config (never commit URLs or secrets)
+xylem.local.json
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
