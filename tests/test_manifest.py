@@ -69,8 +69,11 @@ class ManifestTest(unittest.TestCase):
         self.assertIn("hooks/session_start", ck["artifacts"])
         self.assertIn("hooks/scope_guard", ck["artifacts"])
 
-    def test_context_keeper_remote_marked_unavailable(self):
-        self.assertFalse(self.by_name["context-keeper-remote"]["available"])
+    def test_context_keeper_remote_available(self):
+        # CK-remote is built and deployed (Cloudflare Worker + D1). It must be
+        # available so the installer registers it whenever its URL env var is
+        # set; the http layer still skips it gracefully if the env var is unset.
+        self.assertTrue(self.by_name["context-keeper-remote"]["available"])
 
     def test_agentsync_branch_defaults_to_agentsync(self):
         self.assertEqual(self.by_name["agentsync"]["env"]["AGENTSYNC_BRANCH"], "agentsync")

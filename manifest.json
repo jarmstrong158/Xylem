@@ -61,12 +61,17 @@
     },
     {
       "name": "context-keeper-remote",
-      "available": false,
+      "available": true,
       "transport": "http",
       "url_env_key": "CONTEXT_KEEPER_REMOTE_URL",
-      "headers": {},
+      "headers": {
+        "Authorization": {
+          "env_key": "CONTEXT_KEEPER_REMOTE_TOKEN",
+          "format": "Bearer {value}"
+        }
+      },
       "artifacts": [],
-      "note": "Placeholder. Remote context-keeper Worker is not built yet; installer skips servers with available=false."
+      "note": "Remote context-keeper Worker (Cloudflare + D1). Registered only when CONTEXT_KEEPER_REMOTE_URL is set; the local stdio server is canonical and works without it."
     }
   ]
 }

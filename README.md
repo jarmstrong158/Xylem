@@ -62,7 +62,7 @@ The habit block gets sharper over time, and an install that silently goes stale 
 Every moving part fails soft, because a coordination stack that halts your session when a piece is missing is a worse deal than no stack at all:
 
 - **Missing remote transport?** An http server whose URL env var is unset is skipped with a warning; the local stdio servers install and work regardless. The suite is local-first — the Workers are an addition, never a dependency.
-- **`available: false` servers** (e.g. the not-yet-built `context-keeper-remote`) are quietly skipped by the installer.
+- **`available: false` servers** (e.g. a future analytics server that isn't built yet) are quietly skipped by the installer.
 - **Offline, no git, or no xylem clone?** The version check fetches, finds nothing to compare, and exits silently — it never blocks a session, and any uncaught exception is swallowed to a clean exit 0.
 - **No semantic-search backend?** context-keeper's optional embedding retrieval (Ollama or an OpenAI-compatible endpoint) is strictly additive and falls back to lexical search if unreachable.
 - **Uncertain recall?** cambium abstains below a relevance threshold — `recall()` returns `no_confident_match` rather than confabulating.
@@ -120,6 +120,7 @@ flowchart TB
     MOB -- "GitHub Contents API<br/>(blob-sha = CAS)" --> CLAIMS
     PC -- "stdio" --> LOCAL
     MOB -- "HTTPS connector" --> D1
+    LOCAL <-- "dual-write upsert →<br/>← SessionStart pull merge<br/>(timestamp-guarded)" --> D1
     LOCAL -. "distill()" .-> KLOCAL
     CLAIMS -. "distill()" .-> KLOCAL
     KLOCAL -- "3 recalls / endorse" --> KTEAM
@@ -133,6 +134,14 @@ The blob-sha compare-and-swap that the remote Worker gets from the GitHub Conten
 ### Memory — context-keeper `·` context-keeper-remote
 
 **The problem:** across session resets and long conversations, an agent loses the *why* behind earlier choices and silently breaks patterns it established an hour ago. **The design decision:** records are rationale-first — `record_decision` *requires* a problem statement and rationale, deprecated decisions stay retrievable (so "why did we change from X?" has an answer), and scope-aware constraints re-inject at the exact moment you edit a file they cover rather than only at session start. Storage is plain human-editable JSON in `.context/` with zero required dependencies; semantic retrieval via Ollama or an OpenAI-compatible endpoint is strictly additive and falls back to lexical search if unreachable.
+
+**The mirror (local ⇄ remote).** The local `.context/` store is canonical, and the remote D1-backed Worker is a mirror of it so the *same* memory reaches your phone. It's a dual-write:
+
+- **Every local write pushes to the remote** via a `mirror` upsert — record, update, and deprecate all propagate as they happen.
+- **`SessionStart` pulls and merges** entries that are newer on the remote back into the local store, so an edit made from the phone shows up on the desktop next session.
+- **The upsert is timestamp-guarded**, so edits and deprecations flow *both* ways and the newer version wins — the mirror converges regardless of which device touched an entry last.
+
+Honest caveats: two edits to the same entry within the resolution of the timestamps — sub-second, cross-device — can misorder under clock skew, since the guard only has wall-clock to break the tie; whenever the guard overwrites a version, the displaced copy is appended to `.mirror_conflicts.json` so nothing is silently lost and you can reconcile by hand. The mirror is an addition, never a dependency: with the remote unreachable the local store just keeps working (see [Degraded mode](#degraded-mode)).
 
 - **Local (Python, stdio MCP):** install the `.mcpb` bundle from Releases in Claude Desktop, or `pip install context-keeper-mcp` and point your MCP config at `server.py` with `CONTEXT_KEEPER_PROJECT` set. → [context-keeper](https://github.com/jarmstrong158/context-keeper)
 - **Remote (Cloudflare Worker + D1):** the same decision/constraint/pipeline store as a claude.ai custom connector — no local server, works from mobile.
@@ -152,7 +161,7 @@ The blob-sha compare-and-swap that the remote Worker gets from the GitHub Conten
 
 **The problem:** the knowledge an agent accumulates while working is real, but most of it is worth remembering only locally, and only some earns a place at team or org scope. **The design decision:** cambium is a growth layer over the other two substrates — it `distill()`s completed work (agentsync events + context-keeper decisions) into memory by passive observation, serves it back through one `recall()` endpoint for any agent type, and promotes it by trust: local → team at 3 recalls or one endorsement, team → org only with an endorsement plus optional PR review. Like the rest of the stack it stores in git rather than a new database (`.cambium/knowledge.json` locally, a `cambium` branch for team, a separate repo for org), and it abstains — below a relevance threshold `recall()` returns `no_confident_match` instead of confabulating. It's honest about its limits: claims completed and re-claimed between distill runs can be lost, a deliberate trade of completeness for simplicity.
 
-- **Install (Python, stdio MCP):** `pip install mcp`, then configure the repo path, agent id, and optional org-repo location; capture hooks call `distill()` at session-end / post-commit. → [cambium](https://github.com/jarmstrong158/cambium)
+- **Install (Python, stdio MCP):** `pip install mcp`, then let the server walk you in. There's no config file to hand-edit: an unconfigured tool fails *helpful*, returning structured guidance instead of a bare error; `status()` reports exactly what's set, what's missing, what each gap costs in plain terms, and the one `setup()` call that fixes it; `setup(project_repo, agent_id, …)` validates the paths, scaffolds `.cambium/` (and gitignores it), and writes the fallback config — no restart. Capture hooks call `distill()` at session-end / post-commit. `export_markdown()` renders the accumulated knowledge to a human-readable `KNOWLEDGE.md` (and, at org scope, commits it beside `knowledge.json`) — [here's the live one](https://github.com/jarmstrong158/knowledge/blob/main/KNOWLEDGE.md). → [cambium](https://github.com/jarmstrong158/cambium)
 
 ## Cross-transport walkthrough
 
@@ -164,6 +173,10 @@ The point of the two transports is that a phone is a first-class peer, not a vie
 4. **PC proceeds.** The desktop agent's next `survey()`/`check_conflicts()` picks up your reply, unblocks, finishes the slice, and marks the claim done. Meanwhile cambium's `distill()` quietly captures the decision and its rationale for next time.
 
 One mesh, two devices, no central server between them.
+
+## Proven in use
+
+The stack runs against its authors' own work, not just a demo: cambium's knowledge lifecycle produced this live [`KNOWLEDGE.md`](https://github.com/jarmstrong158/knowledge/blob/main/KNOWLEDGE.md). And the [Balatron](https://github.com/jarmstrong158/Balatron) agent went through a full audit → fix → re-measure cycle with the decisions and their rationale captured in context-keeper as they were made.
 
 ## Design principles
 
