@@ -233,6 +233,54 @@
   .caveats ul{margin:.5em 0 0;padding-left:1.1em}
   .caveats li{margin:.3em 0}
 
+  /* ---- real-usage replay ---- */
+  .replay{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 16px;box-shadow:var(--shadow);margin-top:16px}
+  .replay-fallback{font-size:.92rem;color:var(--ink-soft);margin:0}
+  .replay-track{position:relative;max-height:clamp(320px,58vh,460px);overflow-y:auto;scroll-behavior:smooth;-webkit-overflow-scrolling:touch}
+  @media (prefers-reduced-motion: reduce){.replay-track{scroll-behavior:auto}}
+  .ev-row{display:none;gap:10px;padding:2px 0}
+  .ev-row.on{display:flex;animation:evin .4s ease both}
+  @keyframes evin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .ev-spine{order:0;flex:0 0 20px;position:relative;display:flex;justify-content:center;align-items:flex-start}
+  .ev-spine::before{content:"";position:absolute;top:22px;bottom:-10px;left:50%;width:2px;margin-left:-1px;background:var(--line)}
+  .ev-row.current .ev-spine::before{display:none}
+  .ev-dot{position:relative;z-index:1;width:14px;height:14px;border-radius:50%;margin-top:15px;background:var(--line);border:2px solid var(--surface)}
+  .ev-row.current .ev-dot{background:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent)}
+  .ev-side{order:1;flex:1 1 auto;min-width:0}
+  .ev-side:empty{display:none}
+  .ev-card{background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px 14px;transition:border-color .3s,box-shadow .3s,opacity .3s}
+  .ev-row.past .ev-card{opacity:.6}
+  .ev-row.current .ev-card{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 15%,transparent);opacity:1}
+  .ev-meta{display:flex;flex-wrap:wrap;gap:7px;align-items:center;font-size:.75rem;margin-bottom:6px}
+  .ev-agent{display:inline-flex;align-items:center;gap:5px;font-weight:700;color:var(--ink)}
+  .ev-badge{font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:999px;font-size:.68rem}
+  .ev-when{color:var(--ink-soft);font-variant-numeric:tabular-nums;font-family:ui-monospace,Menlo,monospace}
+  .ev-sum{font-size:.93rem;color:var(--ink);line-height:1.45;overflow-wrap:anywhere}
+  .ev-link{display:inline-block;margin-top:8px;font:.8rem/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;overflow-wrap:anywhere}
+  .t-claim{background:color-mix(in srgb,#3b82f6 16%,transparent);color:#2f6ae0}
+  .t-decision{background:color-mix(in srgb,#d98a00 20%,transparent);color:#a96c00}
+  .t-release{background:color-mix(in srgb,var(--accent) 20%,transparent);color:var(--accent-ink)}
+  .t-commit{background:color-mix(in srgb,#6b7280 22%,transparent);color:#586170}
+  @media (prefers-color-scheme: dark){
+    .t-claim{color:#79c0ff}.t-decision{color:#ffce6a}.t-commit{color:#aab3bd}
+  }
+  .replay-count{margin-left:auto;font-size:.85rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+  .replay-bar{height:5px;background:var(--surface-2);border-radius:999px;overflow:hidden;margin-top:14px;border:1px solid var(--line)}
+  .replay-bar .fillp{height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .35s ease}
+  .replay-legend{display:flex;flex-wrap:wrap;gap:12px;margin:14px 0 0;font-size:.78rem;color:var(--ink-soft)}
+  .replay-legend span{display:inline-flex;align-items:center;gap:6px}
+  .replay-legend i{width:9px;height:9px;border-radius:50%;display:inline-block}
+  @media (min-width:600px){
+    .ev-row{display:none}
+    .ev-row.on{display:grid;grid-template-columns:1fr 20px 1fr;align-items:start}
+    .ev-left{grid-column:1;text-align:right}
+    .ev-left .ev-card{text-align:left;display:inline-block;max-width:100%}
+    .ev-spine{grid-column:2}
+    .ev-right{grid-column:3}
+    .ev-side:empty{display:block}
+    .ev-left .ev-meta{justify-content:flex-end}
+  }
+
   /* ---- footer ---- */
   footer{border-top:1px solid var(--line);background:var(--surface)}
   .flinks{display:grid;grid-template-columns:1fr;gap:12px;padding:36px 0}
@@ -325,6 +373,40 @@
                 style="width:100%;height:100%;border:0;border-radius:16px" allowfullscreen></iframe>
       </div>
     -->
+  </div>
+</section>
+
+<!-- ============ THIS ACTUALLY HAPPENED (real-usage replay) ============
+     Rendered at runtime from docs/demo-timeline.json (real agentsync board
+     history + context-keeper decisions). The JSON file is the single source;
+     no event data is duplicated here.
+=================================================================== -->
+<section id="happened">
+  <div class="wrap">
+    <div class="eyebrow">This actually happened</div>
+    <h2>Replayed from the real commit history</h2>
+    <p class="muted">The couch demo above is illustrative — a clean, one-loop walkthrough. This one isn't. It's replayed from the actual agentsync board and context-keeper decisions recorded while the stack was used to build itself. Step through it; every event links to the commit or PR behind it.</p>
+
+    <div class="replay" id="replay">
+      <p class="replay-fallback" id="replay-fallback">Loading the real timeline… if it doesn't load, read it raw: <a href="demo-timeline.json">demo-timeline.json</a>.</p>
+      <div class="replay-track" id="replay-track" role="list" aria-label="Real-usage event timeline"></div>
+      <p class="caption" id="replay-caption" aria-live="polite"></p>
+      <div class="controls replay-controls" style="display:none">
+        <button class="ctrl" id="replay-prev" aria-label="Previous event">‹</button>
+        <button class="ctrl play" id="replay-play" aria-label="Play or pause">▶ Play</button>
+        <button class="ctrl" id="replay-next" aria-label="Next event">›</button>
+        <span class="replay-count" id="replay-count"></span>
+      </div>
+      <div class="replay-bar" id="replay-bar" style="display:none"><div class="fillp" id="replay-fill"></div></div>
+    </div>
+
+    <div class="replay-legend" aria-hidden="true">
+      <span><i style="background:#3b82f6"></i>claim</span>
+      <span><i style="background:#d98a00"></i>decision</span>
+      <span><i style="background:var(--accent)"></i>release</span>
+      <span><i style="background:#6b7280"></i>commit</span>
+      <span>💻 jonny-desktop · 📱 jonny-mobile</span>
+    </div>
   </div>
 </section>
 
@@ -610,6 +692,126 @@
   } else {
     groups.forEach(revealGroup);
   }
+})();
+</script>
+
+<script>
+/* ---------- "This actually happened": replay docs/demo-timeline.json ---------- */
+(function(){
+  "use strict";
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var stage=document.getElementById("replay"),
+      track=document.getElementById("replay-track"),
+      fallback=document.getElementById("replay-fallback"),
+      caption=document.getElementById("replay-caption"),
+      countEl=document.getElementById("replay-count"),
+      barWrap=document.getElementById("replay-bar"),
+      barFill=document.getElementById("replay-fill"),
+      controls=document.querySelector(".replay-controls"),
+      playBtn=document.getElementById("replay-play"),
+      prevBtn=document.getElementById("replay-prev"),
+      nextBtn=document.getElementById("replay-next");
+  if(!track) return;
+
+  var MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  var events=[], rowsEls=[], idx=0, playing=false, timer=null;
+
+  function esc(s){ var d=document.createElement("div"); d.textContent=(s==null?"":String(s)); return d.innerHTML; }
+  function fmtWhen(iso){
+    var m=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(iso||"");
+    if(!m) return esc(iso);
+    return MONTHS[(+m[2])-1]+" "+(+m[3])+" · "+m[4]+":"+m[5]+" UTC";
+  }
+  function side(a){ return a==="jonny-mobile" ? "right" : "left"; }
+  function icon(a){ return a==="jonny-mobile" ? "📱" : "💻"; }
+  function typeMeta(t){
+    return ({claim:{c:"t-claim",i:"📌"},decision:{c:"t-decision",i:"🧠"},
+             release:{c:"t-release",i:"✅"},commit:{c:"t-commit",i:"💾"}})[t] || {c:"t-commit",i:"•"};
+  }
+  function provLabel(url){
+    try{
+      var u=new URL(url), parts=u.pathname.split("/").filter(Boolean), repo=parts[1]||u.hostname;
+      if(parts.indexOf("pull")>=0) return repo+" · PR #"+parts[parts.indexOf("pull")+1];
+      if(parts.indexOf("commit")>=0) return repo+" · "+parts[parts.indexOf("commit")+1].slice(0,7);
+      if(parts.indexOf("blob")>=0) return repo+" · "+parts[parts.length-1];
+      return repo;
+    }catch(e){ return "view source"; }
+  }
+
+  function render(){
+    track.innerHTML="";
+    rowsEls = events.map(function(ev){
+      var row=document.createElement("div"); row.className="ev-row"; row.setAttribute("role","listitem");
+      var left=document.createElement("div"); left.className="ev-side ev-left";
+      var spine=document.createElement("div"); spine.className="ev-spine"; spine.innerHTML='<span class="ev-dot" aria-hidden="true"></span>';
+      var right=document.createElement("div"); right.className="ev-side ev-right";
+      var tm=typeMeta(ev.event_type);
+      var card=document.createElement("div"); card.className="ev-card";
+      card.innerHTML=
+        '<div class="ev-meta">'
+        +'<span class="ev-agent">'+icon(ev.agent_id)+' '+esc(ev.agent_id)+'</span>'
+        +'<span class="ev-badge '+tm.c+'">'+tm.i+' '+esc(ev.event_type)+'</span>'
+        +'<span class="ev-when">'+fmtWhen(ev.timestamp)+'</span>'
+        +'</div>'
+        +'<div class="ev-sum">'+esc(ev.summary)+'</div>'
+        +'<a class="ev-link" href="'+encodeURI(ev.provenance||"#")+'" target="_blank" rel="noopener">'+esc(provLabel(ev.provenance||""))+' ↗</a>';
+      (side(ev.agent_id)==="right"?right:left).appendChild(card);
+      row.appendChild(left); row.appendChild(spine); row.appendChild(right);
+      track.appendChild(row);
+      return row;
+    });
+  }
+
+  function go(i){
+    idx=Math.max(0, Math.min(events.length-1, i));
+    rowsEls.forEach(function(r,j){
+      r.classList.toggle("on", j<=idx);
+      r.classList.toggle("current", j===idx);
+      r.classList.toggle("past", j<idx);
+    });
+    var ev=events[idx];
+    countEl.textContent=(idx+1)+" / "+events.length;
+    barFill.style.width=((idx+1)/events.length*100)+"%";
+    caption.innerHTML='<span class="step-no">'+(idx+1)+'.</span>'
+      +esc(ev.agent_id+" · "+ev.event_type+" · ")+'<span class="muted">'+fmtWhen(ev.timestamp)+'</span> — '+esc(ev.summary);
+    var cur=rowsEls[idx];
+    if(cur){
+      var target=cur.offsetTop - track.clientHeight/2 + cur.clientHeight/2;
+      if(track.scrollTo){ track.scrollTo({top:Math.max(0,target), behavior:reduce?"auto":"smooth"}); }
+      else { track.scrollTop=Math.max(0,target); }
+    }
+  }
+  function play(){
+    playing=true; playBtn.textContent="❚❚ Pause";
+    timer=setInterval(function(){ if(idx===events.length-1){ stop(); return; } go(idx+1); }, 1800);
+  }
+  function stop(){
+    playing=false; playBtn.textContent="▶ Play";
+    if(timer){ clearInterval(timer); timer=null; }
+  }
+
+  function init(data){
+    events=(data && data.events) || [];
+    if(!events.length){ fallback.textContent="No timeline events to show."; return; }
+    fallback.style.display="none";
+    controls.style.display=""; barWrap.style.display="";
+    render();
+    playBtn.addEventListener("click", function(){ playing ? stop() : (idx===events.length-1 && go(0), play()); });
+    nextBtn.addEventListener("click", function(){ stop(); go(idx+1); });
+    prevBtn.addEventListener("click", function(){ stop(); go(idx-1); });
+    go(0);
+    if("IntersectionObserver" in window && !reduce){
+      var seen=false;
+      new IntersectionObserver(function(es){
+        es.forEach(function(e){ if(e.isIntersecting && !seen){ seen=true; play(); } });
+      },{threshold:.3}).observe(stage);
+    }
+  }
+
+  fetch("demo-timeline.json",{cache:"no-store"})
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); })
+    .then(init)
+    .catch(function(){ fallback.innerHTML='Couldn’t load the live timeline here. Read it raw: <a href="demo-timeline.json">demo-timeline.json</a>.'; });
 })();
 </script>
 </body>
