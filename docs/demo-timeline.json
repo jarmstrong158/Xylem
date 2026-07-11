@@ -1,0 +1,240 @@
+{
+  "title": "Xylem real-usage timeline",
+  "description": "An ordered, real-usage event timeline for the Xylem explainer, reconstructed from actual agentsync board history (claims.json commit log on the agentsync branch) and context-keeper decision records. Three interleaved storylines: a Balatron audit-to-fix-to-remeasure arc, a parallel two-agent cambium session, and a connector-outage incident handled by proxy claim. Real task names preserved; no secrets included.",
+  "generated_from": [
+    "agentsync-remote @ branch agentsync (claims.json git history)",
+    "balatron/.context/decisions.json (dec-058 .. dec-064)",
+    "cambium/.context/decisions.json (dec-001)"
+  ],
+  "storylines": {
+    "balatron-audit-fix-remeasure": "Balatron audit -> dec-061 LR recycle-reset fix -> dec-058 re-measure launch -> crawl-livelock investigation -> dec-063/dec-064 fixes",
+    "parallel-two-agent": "cambium first real cycle (jonny-desktop) and cambium onboarding v1 (jonny-mobile) claimed and completed simultaneously with non-overlapping touches",
+    "connector-outage": "agentsync connector dropped for the mobile sandbox; the session held discipline via a proxy claim staked by the chat session, released with a truthful handoff note"
+  },
+  "events": [
+    {
+      "timestamp": "2026-07-02T20:39:51Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "decision",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Recorded dec-058: Tier-0 optimizer hygiene from the plateau audit — LR locked at 1e-4, ratio-bomb guard, per-minibatch KL stop, value-norm stats persisted",
+      "provenance": "https://github.com/jarmstrong158/Balatron/commit/3ac9371738201f33e0907316e805d5bbda54ad18"
+    },
+    {
+      "timestamp": "2026-07-02T21:05:47Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "decision",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Recorded dec-059: boss-aware planner v1 — build_survivability gates the immediate ante at the known boss's real difficulty (the audit's top ~5x lever)",
+      "provenance": "https://github.com/jarmstrong158/Balatron/commit/2613799dc5ce9dfc73b2ea8dd058bec36986e8bc"
+    },
+    {
+      "timestamp": "2026-07-03T18:02:02Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "decision",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Recorded dec-060: save->spike economy v1 — reroll-to-assemble raised to 0.25 and interest floor relaxed to $10 before a hard boss, the power-side companion to dec-059",
+      "provenance": "https://github.com/jarmstrong158/Balatron/commit/7ab19eff7dab5706a673d8cb8acbc8aa2ff1519f"
+    },
+    {
+      "timestamp": "2026-07-10T00:57:13Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "claim",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Claimed 'balatron work session - 2026-07-09' to audit whether dec-058/059/060 are actually working on live training",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/9713f1de8711a6ac14de442137dd21f1c4855729"
+    },
+    {
+      "timestamp": "2026-07-10T01:21:26Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "release",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Released audit: dec-058 partially working (LR resets on recycle), dec-059 modest boss kills, dec-060 no outcome lift; win rate 0.48% flat; top next action is trace the LR recycle-reset bug",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/de9f6e02b8aafa6164ee08572a881fe80ef70946"
+    },
+    {
+      "timestamp": "2026-07-10T01:32:17Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "claim",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Claimed 'balatron - trace LR recycle-reset bug (dec-058 follow-up)' to chase the LR that keeps reverting on supervisor recycle",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/f2b0f853085243f8b51aa5f9468a0c9484e4a3ef"
+    },
+    {
+      "timestamp": "2026-07-10T01:40:44Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "decision",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Recorded dec-061: root cause is load_checkpoint restoring a stale 2.7e-4 LR from the optimizer state_dict; fix adds an lr_override that re-asserts 1e-4 right after optimizer.load_state_dict",
+      "provenance": "https://github.com/jarmstrong158/Balatron/commit/6f5d6a1849d87b49bf76659f8b8270723dcd6f05"
+    },
+    {
+      "timestamp": "2026-07-10T02:37:32Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "release",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Released LR trace+fix: 3/3 new tests pass, full suite 122 pass; recommended next is a training run to re-measure dec-058's real effect with the LR lock holding",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/c5c54edf0f4eecd5fcf1791ae9e558fe15a81de4"
+    },
+    {
+      "timestamp": "2026-07-10T13:52:19Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "claim",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Claimed 'balatron - dec-058 remeasure training launch' to relaunch training from a dec-061-fixed checkpoint",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/8cdfa4934342710f42e7925043515a63eb11b7ab"
+    },
+    {
+      "timestamp": "2026-07-10T13:57:23Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "commit",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Committed dashboard regime boundary at update 3749 ('dec-058 remeasure, LR fixed') so the re-measure is cleanly separable from prior training",
+      "provenance": "https://github.com/jarmstrong158/Balatron/commit/b03f621e7e4a18323031ef592137407cd9f1df87"
+    },
+    {
+      "timestamp": "2026-07-10T14:02:26Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "release",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Released remeasure launch: started from balatron_phase1_update003748.pt (includes dec-061 fix), heartbeat healthy ~120 steps/min; check in ~24h for win-rate lift and that LR holds 1e-4 after first recycle",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/45e4b2d50cf14cfa96bb7ea73802338a8992b585"
+    },
+    {
+      "timestamp": "2026-07-10T16:46:36Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "claim",
+      "storyline": "parallel-two-agent",
+      "summary": "Claimed 'cambium first real cycle' (touches: knowledge substrates only, no balatron code) — running cambium end-to-end on balatron history",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/81170557f7910b0401d9f8b529ce8ba94e5fe5ee"
+    },
+    {
+      "timestamp": "2026-07-10T17:04:18Z",
+      "agent_id": "jonny-mobile",
+      "event_type": "claim",
+      "storyline": "parallel-two-agent",
+      "summary": "Claimed 'cambium onboarding v1 (status/setup/fail-helpful)' (touches: cambium/** code) simultaneously with the desktop cycle — non-overlapping paths, no conflict",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/245efc589d89ee78065265b9ad236f7335197cbd"
+    },
+    {
+      "timestamp": "2026-07-10T17:17:22Z",
+      "agent_id": "jonny-mobile",
+      "event_type": "release",
+      "storyline": "parallel-two-agent",
+      "summary": "Released 'cambium onboarding v1' — helpful first contact (status / setup / fail-helpful when unconfigured) shipped via cambium PR #4",
+      "provenance": "https://github.com/jarmstrong158/cambium/pull/4"
+    },
+    {
+      "timestamp": "2026-07-10T17:22:21Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "decision",
+      "storyline": "parallel-two-agent",
+      "summary": "Recorded cambium dec-001: first real end-to-end knowledge cycle on balatron history (distill 80 items -> recall -> promote 22 to team -> endorse -> org PRs #1/#2 -> cross-project recall from the Clark project); federation validated",
+      "provenance": "https://github.com/jarmstrong158/knowledge/pull/2"
+    },
+    {
+      "timestamp": "2026-07-10T17:23:02Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "release",
+      "storyline": "parallel-two-agent",
+      "summary": "Released 'cambium first real cycle' — DONE end-to-end on balatron history, NO balatron code touched (knowledge substrates only); completed alongside the mobile onboarding claim with zero contention",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/b4cec7068b26dae4d2c6af1f99c5f33e11556e3a"
+    },
+    {
+      "timestamp": "2026-07-10T21:11:51Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "claim",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Claimed 'balatron: investigate training crawl loop' — the remeasure run made zero checkpoint progress overnight (601 CRAWL recycles, ~20h)",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/e6d3cc27bb3af109a807473808f29a2c03f06468"
+    },
+    {
+      "timestamp": "2026-07-10T21:17:43Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "release",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Released crawl root cause (read-only, no code changes): two-layer livelock — INVALID_STATE poll-spin against the game state machine, plus checkpoint-interval-2 + recycle-before-save meaning the trainer never reaches update 3750 to save",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/bf1cd6a853d95ff9247b349db02a75920bb0a640"
+    },
+    {
+      "timestamp": "2026-07-10T21:24:18Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "claim",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Claimed 'balatron: fix crawl livelock (checkpoint-on-teardown + INVALID_STATE trace)' to ship the two fixes",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/bb9932976a24a03071b6b8d397ecd98ad8f10171"
+    },
+    {
+      "timestamp": "2026-07-10T21:38:16Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "decision",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Recorded dec-063: checkpoint-crawl livelock breaker — wall-clock SAFETY checkpoint (>=480s) in the update loop, graceful SIGINT/SIGTERM/SIGBREAK handlers, and an untagged teardown save the supervisor can reload",
+      "provenance": "https://github.com/jarmstrong158/Balatron/commit/b57b602d33b6975966dad6cba66da51194707142"
+    },
+    {
+      "timestamp": "2026-07-10T21:38:44Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "commit",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Committed 'fix: break checkpoint-crawl livelock (wall-clock safety ckpt + untagged teardown save)', pushed to origin/main",
+      "provenance": "https://github.com/jarmstrong158/Balatron/commit/b57b602d33b6975966dad6cba66da51194707142"
+    },
+    {
+      "timestamp": "2026-07-10T21:43:28Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "decision",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Recorded dec-064: INVALID_STATE desync — the execute_action retry loop now re-reads live game state and aborts a stale action immediately instead of burning all 3 retries + backoff into the wrong state",
+      "provenance": "https://github.com/jarmstrong158/Balatron/commit/b0a3a48af611ee97b9ac7e95d91fc8b233c89ade"
+    },
+    {
+      "timestamp": "2026-07-10T21:43:52Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "commit",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Committed 'fix: stop burning retries on INVALID_STATE desync (abort stale actions fast)', pushed to origin/main",
+      "provenance": "https://github.com/jarmstrong158/Balatron/commit/b0a3a48af611ee97b9ac7e95d91fc8b233c89ade"
+    },
+    {
+      "timestamp": "2026-07-10T21:45:10Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "release",
+      "storyline": "balatron-audit-fix-remeasure",
+      "summary": "Released crawl-livelock fixes: both shipped and pushed (b57b602 + b0a3a48), 146 tests pass, dec-063 + dec-064 recorded; supervisor picks up the new code on next recycle",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/4a17c8264da86b1fa861b2d6959ab9bb98c4ac25"
+    },
+    {
+      "timestamp": "2026-07-10T22:01:12Z",
+      "agent_id": "jonny-mobile",
+      "event_type": "claim",
+      "storyline": "connector-outage",
+      "summary": "Proxy claim staked by the chat session on behalf of the mobile CC session whose agentsync connector had dropped: 'cambium: export_markdown + mojibake fix' — discipline held, no work without a board claim",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/2a272323e4a0dfb7cba2f399f712e6626ab845c4"
+    },
+    {
+      "timestamp": "2026-07-10T22:15:44Z",
+      "agent_id": "jonny-mobile",
+      "event_type": "release",
+      "storyline": "connector-outage",
+      "summary": "Released with a truthful note: export_markdown shipped via cambium PR #5 (renderer + cp1252 mojibake fix + tests), but the live org run was NOT done (sandbox has no CAMBIUM_ORG_REPO); handed to jonny-desktop to run it after merge",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/8bc8006cd9f4305c9441a0317d6a0570efb7a619"
+    },
+    {
+      "timestamp": "2026-07-10T22:24:32Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "claim",
+      "storyline": "connector-outage",
+      "summary": "Claimed 'cambium: live KNOWLEDGE.md export' — desktop picks up the handoff to run export_markdown against the real org clone",
+      "provenance": "https://github.com/jarmstrong158/agentsync-remote/commit/bb7be82976948d265a99c535509afc7b4a964f73"
+    },
+    {
+      "timestamp": "2026-07-10T22:33:26Z",
+      "agent_id": "jonny-desktop",
+      "event_type": "release",
+      "storyline": "connector-outage",
+      "summary": "Released 'cambium: live KNOWLEDGE.md export' — all 9 org items present and clean (the mojibake fix's first field test passed), pushed to the knowledge repo; the proxy-covered handoff is fully resolved",
+      "provenance": "https://github.com/jarmstrong158/knowledge/blob/main/KNOWLEDGE.md"
+    }
+  ]
+}
