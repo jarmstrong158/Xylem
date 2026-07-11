@@ -3,19 +3,19 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Xylem — AI coding agents that remember, coordinate, and ask</title>
-<meta name="description" content="My AI coding agents remember decisions, coordinate without stepping on each other, and can ask me questions on my phone while I'm on the couch.">
-<meta property="og:title" content="Xylem — a multi-agent AI development stack">
-<meta property="og:description" content="AI coding agents that remember decisions, coordinate without stepping on each other, and can ask me questions on my phone.">
+<title>Xylem — one install: agents that remember, coordinate, and ask by default</title>
+<meta name="description" content="One install writes the habit in: my AI coding agents remember decisions, coordinate without stepping on each other, and ask me on my phone by default — not tools they can call and usually don't.">
+<meta property="og:title" content="Xylem — one install, agents that remember, coordinate, and ask by default">
+<meta property="og:description" content="One install writes the habit in: AI coding agents that remember decisions, coordinate without stepping on each other, and ask me on my phone by default.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://jarmstrong158.github.io/Xylem/">
 <meta property="og:image" content="https://jarmstrong158.github.io/Xylem/social-preview.png">
 <meta property="og:image:width" content="2560">
 <meta property="og:image:height" content="1280">
-<meta property="og:image:alt" content="Xylem — agents that remember, coordinate, and ask. Memory, coordination, and a knowledge lifecycle for multi-agent AI development.">
+<meta property="og:image:alt" content="Xylem — one install: agents that remember, coordinate, and ask by default. Memory, coordination, and a knowledge lifecycle for multi-agent AI development.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Xylem — a multi-agent AI development stack">
-<meta name="twitter:description" content="AI coding agents that remember decisions, coordinate without stepping on each other, and can ask me questions on my phone.">
+<meta name="twitter:title" content="Xylem — one install, agents that remember, coordinate, and ask by default">
+<meta name="twitter:description" content="One install writes the habit in: AI coding agents that remember decisions, coordinate without stepping on each other, and ask me on my phone by default.">
 <meta name="twitter:image" content="https://jarmstrong158.github.io/Xylem/social-preview.png">
 <style>
   /* ---- Design tokens: one accent, high contrast, mobile-first ---- */
@@ -84,6 +84,31 @@
   }
   .btn:hover{text-decoration:none;filter:brightness(1.05)}
   .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+
+  /* one-install command block */
+  .install{
+    margin:24px 0 0;background:var(--surface);border:1px solid var(--line);
+    border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);max-width:52ch;
+  }
+  .install .cmd{
+    display:inline-block;font:600 .95rem/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    background:var(--ink);color:#d9f2e5;padding:7px 13px;border-radius:8px;
+  }
+  @media (prefers-color-scheme: dark){.install .cmd{background:#05100b;border:1px solid var(--line)}}
+  .install .os{font:.82rem/1.4 ui-monospace,Menlo,monospace;color:var(--ink-soft);margin-left:10px}
+  .install .what{display:block;margin:11px 0 0;font-size:.9rem;color:var(--ink-soft)}
+
+  /* ---- a week of real use ---- */
+  .uselist{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:14px}
+  .uselist li{
+    background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--accent);
+    border-radius:12px;padding:16px 18px;box-shadow:var(--shadow);
+  }
+  .uselist li b{color:var(--ink)}
+  .uselist .body{color:var(--ink-soft);margin-top:4px}
+  .uselist .links{display:block;margin-top:9px;font-size:.86rem}
+  .uselist .links a{white-space:nowrap}
+  .uselist .links .sep{color:var(--ink-soft);margin:0 4px}
 
   /* ---- Flow / animation ---- */
   .stage{
@@ -232,9 +257,13 @@
 <!-- ============ HERO ============ -->
 <header class="hero wrap">
   <div class="leaf" aria-hidden="true">🌿</div>
-  <h1>AI agents that remember, coordinate, and ask.</h1>
-  <p class="lede">My AI coding agents remember decisions, coordinate without stepping on each other, and can <span class="hl">ask me questions on my phone</span> while I'm on the couch.</p>
-  <p class="sub">Xylem is a small stack of tools that gives AI coding assistants three human things: a memory, a way to share a job site, and a way to reach me when they're stuck — even when I'm nowhere near my desk.</p>
+  <h1>One install — agents that remember, coordinate, and ask by default.</h1>
+  <p class="lede">Not tools an agent <em>can</em> call and usually doesn't. One install writes the habit in, so my agents remember decisions, coordinate without clobbering each other, and <span class="hl">ask me on my phone</span> while I'm on the couch.</p>
+  <p class="sub">Xylem is a small stack of tools that gives AI coding assistants three human things — a memory, a shared job site, and a way to reach me when they're stuck — plus the one piece that makes them actually get used: an installer that writes the discipline into the agent's own instructions.</p>
+  <div class="install">
+    <code class="cmd">./install.sh</code><span class="os">Windows: .\install.ps1</span>
+    <span class="what">Registers the servers, injects a fenced discipline block into your <code>CLAUDE.md</code>, and adds the <code>/xylem-discipline</code> command — so "installed" means "used," not "available and ignored."</span>
+  </div>
   <div class="cta">
     <a class="btn" href="#flow">See how it works</a>
     <a class="btn ghost" href="https://github.com/jarmstrong158/Xylem">View on GitHub</a>
@@ -299,6 +328,40 @@
   </div>
 </section>
 
+<!-- ============ A WEEK OF REAL USE ============
+     Every item links to a commit or PR a skeptical reader can open.
+     Links verified 2026-07-11.
+================================================================= -->
+<section id="real-use">
+  <div class="wrap">
+    <div class="eyebrow">Not a mockup — a week</div>
+    <h2>A week of real use</h2>
+    <p class="muted">Ordinary work, run on this stack. Every item links to a commit or PR you can open and check.</p>
+    <ol class="uselist">
+      <li>
+        <b>An audit → fix → retrain loop, driven from a phone.</b>
+        <div class="body">An agent audited a Balatron model's optimizer, found the learning rate was being reset every time a checkpoint reloaded, locked it at load time, and re-ran — the whole cycle steered from the couch.</div>
+        <span class="links"><a href="https://github.com/jarmstrong158/Balatron/commit/3ac9371">the audit (dec-058)</a><span class="sep">·</span><a href="https://github.com/jarmstrong158/Balatron/commit/6f5d6a1">the LR-lock fix</a><span class="sep">·</span><a href="https://github.com/jarmstrong158/Balatron/commit/00eefa0">dec-061 follow-up</a></span>
+      </li>
+      <li>
+        <b>Two agents building in parallel on one board.</b>
+        <div class="body">Two agents claimed disjoint lanes on a single shared board and built on their own branches. The board's compare-and-swap refused a colliding claim with its reason, and let non-overlapping work through — no central server refereeing.</div>
+        <span class="links"><a href="https://github.com/jarmstrong158/agentsync/commit/8cd14ed">the two-person CAS test</a></span>
+      </li>
+      <li>
+        <b>A knowledge harvest: 132 distilled lessons → 9 org items.</b>
+        <div class="body">A week of session-level lessons was distilled and boiled down to 9 organization-level knowledge items — each one landed through its own reviewed pull request, not a bulk dump.</div>
+        <span class="links"><a href="https://github.com/jarmstrong158/knowledge/blob/main/KNOWLEDGE.md">the promoted org knowledge</a></span>
+      </li>
+      <li>
+        <b>A connector outage where the discipline held.</b>
+        <div class="body">When the remote connector's MCP handshake started failing, the local-first servers kept working. The fix hardened the handshake so a GitHub-side outage isolates to a logged warning instead of hanging the session.</div>
+        <span class="links"><a href="https://github.com/jarmstrong158/agentsync-remote/commit/2a40c92">handshake hardening</a></span>
+      </li>
+    </ol>
+  </div>
+</section>
+
 <!-- ============ IN PLAIN TERMS ============ -->
 <section id="plain">
   <div class="wrap">
@@ -319,8 +382,8 @@
         <p class="analogy">How one person's hard-won lesson becomes company policy — with a gate so bad lessons don't.</p>
       </div>
       <div class="card xylem">
-        <div class="top"><span class="ic" aria-hidden="true">🌳</span><div><h3>xylem</h3><span class="tool">the hub</span></div></div>
-        <p class="analogy">The front desk that doesn't do the work itself — it knows the whole building and points you to the right room.</p>
+        <div class="top"><span class="ic" aria-hidden="true">🌳</span><div><h3>xylem</h3><span class="tool">the hub + onboarding</span></div></div>
+        <p class="analogy">The front desk that knows the whole building and points you to the right room — and now runs onboarding too: one install writes in the habit layer that gets the other three used without being asked.</p>
       </div>
     </div>
   </div>
@@ -369,6 +432,29 @@
         <div class="stat"><div class="big" data-count-to="0">0</div><div class="lab">tasks double-granted</div></div>
       </div>
       <p class="note muted" style="margin-top:12px;font-size:.86rem">Every one of the 1,000 races was genuinely contended, and all 47 automated tests pass.</p>
+    </div>
+
+    <div class="num-group">
+      <h3>Mirror, two-way</h3>
+      <p class="src">context-keeper · local store ⇄ canonical mirror</p>
+      <div class="stats reveal" id="stats-mirror">
+        <div class="stat"><div class="big" data-count-to="82">0</div><div class="lab">entries kept in sync</div></div>
+        <div class="stat"><div class="big">2-way</div><div class="lab">local ⇄ canonical, both directions</div></div>
+        <div class="stat"><div class="big">merge</div><div class="lab">newest timestamp wins on conflict</div></div>
+      </div>
+      <p class="note muted" style="margin-top:12px;font-size:.86rem">Edits propagate — a changed entry upserts onto the other side instead of duplicating. The limit kept honest: clock skew can affect ordering for sub-second writes.</p>
+    </div>
+
+    <div class="num-group">
+      <h3>Schema, reclaimed</h3>
+      <p class="src">tools/list token budget · before → after</p>
+      <div class="bars reveal" id="bars-schema">
+        <div class="bar-row">
+          <div class="bl"><span class="name">Per-session schema tokens reclaimed</span><span class="val" data-count-to="32.7" data-suffix="%" data-decimals="1">0%</span></div>
+          <div class="track"><div class="fill" data-w="32.7"></div></div>
+          <div class="note">tools/list schema trimmed from 4,347 to 2,927 tokens — 1,420 fewer every session, same tool set.</div>
+        </div>
+      </div>
     </div>
 
     <div class="caveats">
