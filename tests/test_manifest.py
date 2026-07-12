@@ -58,6 +58,17 @@ class ManifestTest(unittest.TestCase):
             self.assertNotIn("command", server, name)
             self.assertNotIn("args", server, name)
 
+    def test_http_servers_carry_no_auth_header(self):
+        # Both remote Workers authenticate on the URL path token (/mcp/<token>)
+        # only; they never read an Authorization header. A header block would
+        # send a bearer the Worker ignores, so no http server declares one.
+        for name, server in self.by_name.items():
+            if server["transport"] != "http":
+                continue
+            self.assertNotIn("headers", server, name)
+        # No Bearer-format token wiring anywhere in the manifest.
+        self.assertNotIn("Bearer {value}", json.dumps(self.manifest))
+
     def test_no_hardcoded_urls_or_secrets(self):
         # Every http server must reference env keys, never literal URLs/tokens.
         blob = json.dumps(self.manifest)

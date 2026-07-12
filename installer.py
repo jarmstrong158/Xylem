@@ -4,7 +4,8 @@
 Installs the Xylem suite into Claude Code:
   - registers enabled MCP servers in settings.json (stdio + http)
   - injects a fenced discipline block into CLAUDE.md
-  - registers the SessionStart memory-injection hook
+  - registers the SessionStart memory-injection and version-check hooks
+  - registers the SessionEnd distill hook (cambium capture leg)
   - installs the /xylem-discipline slash command
 
 Design rules (non-negotiable):
@@ -46,8 +47,13 @@ BACKUP_SUFFIX = ".xylem-backup"
 # Each hook is identified by its script filename appearing in the command.
 HOOK_MARKER = "session_start_hook.py"
 VERSION_CHECK_MARKER = "version_check.py"
-# settings.json env key we own (points the hook at context-keeper's server.py).
+# The SessionEnd hook that fires cambium's distill() -- the capture leg of the
+# compound-growth loop. Keyed by its own script-name marker like the others.
+DISTILL_HOOK_MARKER = "session_end_hook.py"
+# settings.json env keys we own. The first points the SessionStart hook at
+# context-keeper's server.py; the second points the SessionEnd hook at cambium.
 ENV_KEY = "XYLEM_CONTEXT_KEEPER_PATH"
+CAMBIUM_ENV_KEY = "XYLEM_CAMBIUM_PATH"
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 # The sibling-repos directory: context-keeper, agentsync, cambium live here,
@@ -228,25 +234,29 @@ def _is_xylem_hook_group(group, marker):
     return False
 
 
-def merge_hooks(settings, command, marker=HOOK_MARKER):
-    """Register the SessionStart hook once. Idempotent: replaces any prior one."""
+def merge_hooks(settings, command, marker=HOOK_MARKER, event="SessionStart"):
+    """Register a hook under `event` once. Idempotent: replaces any prior one.
+
+    `event` defaults to SessionStart (the memory-injection and version-check
+    hooks); the SessionEnd distill hook passes event="SessionEnd".
+    """
     hooks = settings.setdefault("hooks", {})
-    session_start = hooks.setdefault("SessionStart", [])
-    session_start[:] = [g for g in session_start if not _is_xylem_hook_group(g, marker)]
-    session_start.append({"hooks": [{"type": "command", "command": command}]})
+    groups = hooks.setdefault(event, [])
+    groups[:] = [g for g in groups if not _is_xylem_hook_group(g, marker)]
+    groups.append({"hooks": [{"type": "command", "command": command}]})
     return settings
 
 
-def remove_hooks(settings, marker=HOOK_MARKER):
-    """Remove the Xylem SessionStart hook; prune empty containers."""
+def remove_hooks(settings, marker=HOOK_MARKER, event="SessionStart"):
+    """Remove the Xylem hook from `event`; prune empty containers."""
     hooks = settings.get("hooks")
     if not isinstance(hooks, dict):
         return settings
-    session_start = hooks.get("SessionStart")
-    if isinstance(session_start, list):
-        session_start[:] = [g for g in session_start if not _is_xylem_hook_group(g, marker)]
-        if not session_start:
-            hooks.pop("SessionStart", None)
+    groups = hooks.get(event)
+    if isinstance(groups, list):
+        groups[:] = [g for g in groups if not _is_xylem_hook_group(g, marker)]
+        if not groups:
+            hooks.pop(event, None)
     if not hooks:
         settings.pop("hooks", None)
     return settings
@@ -287,7 +297,8 @@ def all_server_names(manifest):
 
 
 def build_settings_install(settings, manifest, mapping, ck_server_path,
-                           hook_command, version_check_command, warn):
+                           cambium_server_path, hook_command,
+                           version_check_command, distill_command, warn):
     """Apply every Xylem install transform to a settings dict (in place)."""
     entries = {}
     for server in enabled_servers(manifest):
@@ -303,10 +314,15 @@ def build_settings_install(settings, manifest, mapping, ck_server_path,
                  % (server.get("name"), transport))
     merge_mcp_servers(settings, entries)
     merge_env(settings, ENV_KEY, ck_server_path)
+    merge_env(settings, CAMBIUM_ENV_KEY, cambium_server_path)
     # Two SessionStart hooks, each keyed by its own script-name marker so they
     # register independently and neither clobbers the other on re-run.
     merge_hooks(settings, hook_command)
     merge_hooks(settings, version_check_command, marker=VERSION_CHECK_MARKER)
+    # SessionEnd hook: fire cambium's distill() so capture is passive. Keyed by
+    # its own marker under the SessionEnd event.
+    merge_hooks(settings, distill_command, marker=DISTILL_HOOK_MARKER,
+                event="SessionEnd")
     return settings
 
 
@@ -314,7 +330,9 @@ def build_settings_uninstall(settings, manifest):
     remove_mcp_servers(settings, all_server_names(manifest))
     remove_hooks(settings)
     remove_hooks(settings, marker=VERSION_CHECK_MARKER)
+    remove_hooks(settings, marker=DISTILL_HOOK_MARKER, event="SessionEnd")
     remove_env(settings, ENV_KEY)
+    remove_env(settings, CAMBIUM_ENV_KEY)
     return settings
 
 
@@ -464,6 +482,8 @@ def plan(args):
     # Install.
     mapping = build_mapping(project_dir)
     ck_server_path = to_fwd(os.path.join(PARENT, "context-keeper", "server.py"))
+    cambium_server_path = to_fwd(
+        os.path.join(PARENT, "cambium", "cambium_server.py"))
     hook_script = to_fwd(os.path.join(ROOT, "artifacts", "session_start_hook.py"))
     hook_command = '"%s" "%s"' % (to_fwd(sys.executable), hook_script)
     # Same $XYLEM_ROOT-relative resolution and interpreter as the hook above.
@@ -471,9 +491,15 @@ def plan(args):
         os.path.join(ROOT, "artifacts", "version_check.py"))
     version_check_command = '"%s" "%s"' % (
         to_fwd(sys.executable), version_check_script)
+    # SessionEnd distill hook -- same interpreter/resolution pattern.
+    distill_script = to_fwd(
+        os.path.join(ROOT, "artifacts", "session_end_hook.py"))
+    distill_command = '"%s" "%s"' % (to_fwd(sys.executable), distill_script)
 
     build_settings_install(settings, manifest, mapping, ck_server_path,
-                           hook_command, version_check_command, planner.warn)
+                           cambium_server_path, hook_command,
+                           version_check_command, distill_command,
+                           planner.warn)
     planner.set_text(settings_path, dump_json_text(settings))
 
     block = read_text(os.path.join(ROOT, "artifacts", "claude_md_block.md"))
