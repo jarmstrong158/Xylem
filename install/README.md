@@ -25,7 +25,18 @@ Zero dependencies: stdlib Python 3 only. macOS, Linux, Windows.
    ```
    Every key can instead be an environment variable of the same name (env wins).
    The remote Worker URLs embed a secret token — that is exactly why they live in
-   this **untracked** file (or the environment), never in `servers.json`.
+   this **untracked** file (or the environment), never in `servers.json`. The
+   Workers authenticate on that URL path token alone; they never read an
+   Authorization/Bearer header, so the whole `…/mcp/<token>` URL is the credential.
+
+   > **Point context-keeper and cambium at the same clone.** `CONTEXT_KEEPER_PROJECT`
+   > and `CAMBIUM_REPO` must be the **same working tree** (and so should
+   > `AGENTSYNC_REPO`): cambium reads context-keeper's `.context/` from
+   > `CAMBIUM_REPO/.context/` and agentsync's coordination branch from
+   > `CAMBIUM_REPO`. If they diverge, `distill()` silently captures nothing from
+   > context-keeper. Likewise `AGENTSYNC_BRANCH` (what agentsync writes) and
+   > `CAMBIUM_AGENTSYNC_BRANCH` (what distill reads) must name the **same** branch;
+   > both default to `agentsync`.
 
 2. See what would happen (writes nothing):
    ```sh

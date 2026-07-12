@@ -1,6 +1,6 @@
 {
   "$schema": "https://xylem.local/manifest.schema.json",
-  "version": 2,
+  "version": 3,
   "description": "Xylem suite server declarations. The installer resolves $XYLEM_ROOT (this repo), $XYLEM_PARENT (its parent, i.e. the sibling repos directory), and $PROJECT_DIR placeholders and reads all url/token values from environment variables. No URLs or secrets are ever stored in this file.",
   "target": "claude-code",
   "servers": [
@@ -39,13 +39,8 @@
       "available": true,
       "transport": "http",
       "url_env_key": "AGENTSYNC_REMOTE_URL",
-      "headers": {
-        "Authorization": {
-          "env_key": "AGENTSYNC_REMOTE_TOKEN",
-          "format": "Bearer {value}"
-        }
-      },
-      "artifacts": []
+      "artifacts": [],
+      "note": "The Worker authenticates on the URL path only (/mcp/<token>); it never reads an Authorization header (claude.ai connectors don't reliably send bearer headers). AGENTSYNC_REMOTE_URL is the full path-token connector URL and is itself the secret -- no header block."
     },
     {
       "name": "cambium",
@@ -64,14 +59,8 @@
       "available": true,
       "transport": "http",
       "url_env_key": "CONTEXT_KEEPER_REMOTE_URL",
-      "headers": {
-        "Authorization": {
-          "env_key": "CONTEXT_KEEPER_REMOTE_TOKEN",
-          "format": "Bearer {value}"
-        }
-      },
       "artifacts": [],
-      "note": "Remote context-keeper Worker (Cloudflare + D1). Registered only when CONTEXT_KEEPER_REMOTE_URL is set; the local stdio server is canonical and works without it."
+      "note": "Remote context-keeper Worker (Cloudflare + D1). Authenticates on the URL path only (/mcp/<token>); it never reads an Authorization header, so CONTEXT_KEEPER_REMOTE_URL is the full path-token connector URL (itself the secret) with no header block. Registered only when CONTEXT_KEEPER_REMOTE_URL is set; the local stdio server is canonical and works without it."
     }
   ]
 }

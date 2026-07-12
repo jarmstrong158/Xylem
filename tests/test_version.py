@@ -77,11 +77,15 @@ class StampParseTest(unittest.TestCase):
         self.assertIsInstance(manifest["version"], int)
         self.assertGreaterEqual(manifest_version(manifest), 2)
 
-    def test_shipped_block_carries_v2_stamp(self):
+    def test_shipped_block_stamp_matches_manifest(self):
+        # The block's begin marker must carry the manifest's version so the
+        # version-check nudge fires correctly on stale machines.
         with open(os.path.join(ROOT, "artifacts", "claude_md_block.md"),
                   encoding="utf-8") as fh:
             block = fh.read()
-        self.assertEqual(parse_fence_version(block), 2)
+        with open(os.path.join(ROOT, "manifest.json"), encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        self.assertEqual(parse_fence_version(block), manifest_version(manifest))
 
 
 # --------------------------------------------------------------------------

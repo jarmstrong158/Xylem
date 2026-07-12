@@ -406,6 +406,40 @@ def write_with_backup(path, new_text, apply):
 
 
 # --------------------------------------------------------------------------- #
+# cross-server consistency checks
+# --------------------------------------------------------------------------- #
+def _same_tree(a, b):
+    """True if two path strings resolve to the same working tree."""
+    na = os.path.normcase(os.path.normpath(os.path.abspath(a)))
+    nb = os.path.normcase(os.path.normpath(os.path.abspath(b)))
+    return na == nb
+
+
+def _warn_divergent_trees(get):
+    """Warn when context-keeper and cambium are pointed at different clones.
+
+    cambium reads context-keeper's `.context/` from `CAMBIUM_REPO/.context/`, so
+    a `CONTEXT_KEEPER_PROJECT` that differs from `CAMBIUM_REPO` means distill()
+    silently captures nothing from context-keeper. Non-fatal: install proceeds.
+    Also flags a coordination-branch mismatch between agentsync and cambium.
+    """
+    ck = get("CONTEXT_KEEPER_PROJECT")
+    cam = get("CAMBIUM_REPO")
+    if ck and cam and not _same_tree(ck, cam):
+        warn("CONTEXT_KEEPER_PROJECT (%s) and CAMBIUM_REPO (%s) are different "
+             "trees — cambium reads context-keeper's .context/ from "
+             "CAMBIUM_REPO/.context/, so distill() will capture nothing from "
+             "context-keeper. Point both at the same clone." % (ck, cam))
+
+    as_branch = get("AGENTSYNC_BRANCH")
+    cam_branch = get("CAMBIUM_AGENTSYNC_BRANCH")
+    if as_branch and cam_branch and as_branch != cam_branch:
+        warn("AGENTSYNC_BRANCH (%s) and CAMBIUM_AGENTSYNC_BRANCH (%s) differ — "
+             "distill reads the wrong coordination branch and captures no "
+             "agentsync events. They must name the same branch." % (as_branch, cam_branch))
+
+
+# --------------------------------------------------------------------------- #
 # install
 # --------------------------------------------------------------------------- #
 def cmd_install(args):
@@ -415,6 +449,7 @@ def cmd_install(args):
         return 1
     cfg = load_user_config(args.config)
     get = make_getter(cfg)
+    _warn_divergent_trees(get)
 
     # resolve every declared server; report which are configured vs skipped
     servers, unconfigured = [], []

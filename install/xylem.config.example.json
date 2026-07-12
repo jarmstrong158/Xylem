@@ -3,17 +3,23 @@
 
   "_local_stdio_servers": "Absolute paths to each cloned server script, plus its per-server env values.",
   "CONTEXT_KEEPER_SERVER": "/abs/path/to/context-keeper/server.py",
-  "CONTEXT_KEEPER_PROJECT": "/abs/path/to/your/project",
+
+  "_same_tree": "CONTEXT_KEEPER_PROJECT, CAMBIUM_REPO, and AGENTSYNC_REPO must all point at the SAME clone (one working tree). cambium reads context-keeper's .context/ from CAMBIUM_REPO/.context/ and agentsync's coordination branch from CAMBIUM_REPO — if CONTEXT_KEEPER_PROJECT and CAMBIUM_REPO diverge, distill() silently captures nothing from context-keeper.",
+  "CONTEXT_KEEPER_PROJECT": "/abs/path/to/your/project/clone",
 
   "AGENTSYNC_SERVER": "/abs/path/to/agentsync/agentsync_server.py",
-  "AGENTSYNC_REPO": "/abs/path/to/your/clone",
+  "AGENTSYNC_REPO": "/abs/path/to/your/project/clone",
   "AGENTSYNC_AGENT_ID": "your-agent-id",
 
   "CAMBIUM_SERVER": "/abs/path/to/cambium/cambium_server.py",
   "CAMBIUM_REPO": "/abs/path/to/your/project/clone",
   "CAMBIUM_AGENT_ID": "your-agent-id",
 
-  "_remote_http_workers": "The full connector URL for each Worker. The token is the last path segment — the whole URL is a secret. This is why it lives here (untracked), not in servers.json.",
+  "_coordination_branch": "The agentsync coordination branch is named by two keys that MUST match: agentsync writes it (AGENTSYNC_BRANCH), cambium's distill reads it (CAMBIUM_AGENTSYNC_BRANCH). Both default to 'agentsync'; set both together if you change it, or distill reads the wrong branch and captures no coordination events.",
+  "AGENTSYNC_BRANCH": "agentsync",
+  "CAMBIUM_AGENTSYNC_BRANCH": "agentsync",
+
+  "_remote_http_workers": "The full connector URL for each Worker. The token is the last path segment — the whole URL is the secret, and the Worker authenticates on that path token alone (it never reads an Authorization/Bearer header). This is why it lives here (untracked), not in servers.json.",
   "CONTEXT_KEEPER_REMOTE_URL": "https://context-keeper-remote.<your-subdomain>.workers.dev/mcp/<your-token>",
   "AGENTSYNC_REMOTE_URL": "https://<your-worker>.<your-subdomain>.workers.dev/mcp/<your-token>",
 

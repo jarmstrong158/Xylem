@@ -2,6 +2,7 @@
 import copy
 import json
 import os
+import subprocess
 import sys
 import unittest
 
@@ -10,10 +11,13 @@ sys.path.insert(0, ROOT)
 
 from installer import (  # noqa: E402
     merge_hooks, remove_hooks, HOOK_MARKER, VERSION_CHECK_MARKER,
+    DISTILL_HOOK_MARKER, build_settings_install, build_settings_uninstall,
+    CAMBIUM_ENV_KEY,
 )
 
 COMMAND = '"python" "/x/artifacts/session_start_hook.py"'
 VERSION_CHECK_COMMAND = '"python" "/x/artifacts/version_check.py"'
+DISTILL_COMMAND = '"python" "/x/artifacts/session_end_hook.py"'
 
 
 class HooksTest(unittest.TestCase):
@@ -151,6 +155,101 @@ class TwoHookTest(unittest.TestCase):
         commands = [h["command"] for g in groups for h in g["hooks"]]
         self.assertIn(COMMAND, commands)
         self.assertNotIn(VERSION_CHECK_COMMAND, commands)
+
+
+class DistillHookTest(unittest.TestCase):
+    """The SessionEnd distill hook registers under SessionEnd, independently."""
+
+    def test_registers_under_session_end(self):
+        settings = {}
+        merge_hooks(settings, DISTILL_COMMAND, marker=DISTILL_HOOK_MARKER,
+                    event="SessionEnd")
+        groups = settings["hooks"]["SessionEnd"]
+        self.assertEqual(len(groups), 1)
+        inner = groups[0]["hooks"][0]
+        self.assertEqual(inner["command"], DISTILL_COMMAND)
+        self.assertIn(DISTILL_HOOK_MARKER, inner["command"])
+        # It lives under SessionEnd, not SessionStart.
+        self.assertNotIn("SessionStart", settings["hooks"])
+
+    def test_does_not_duplicate_on_rerun(self):
+        settings = {}
+        for _ in range(3):
+            merge_hooks(settings, DISTILL_COMMAND, marker=DISTILL_HOOK_MARKER,
+                        event="SessionEnd")
+        self.assertEqual(len(settings["hooks"]["SessionEnd"]), 1)
+
+    def test_remove_prunes_session_end(self):
+        settings = {}
+        merge_hooks(settings, DISTILL_COMMAND, marker=DISTILL_HOOK_MARKER,
+                    event="SessionEnd")
+        remove_hooks(settings, marker=DISTILL_HOOK_MARKER, event="SessionEnd")
+        self.assertNotIn("hooks", settings)
+
+
+class DistillHookScriptTest(unittest.TestCase):
+    """The session_end_hook.py script fails soft and prints ASCII-only."""
+
+    SCRIPT = os.path.join(ROOT, "artifacts", "session_end_hook.py")
+
+    def _run(self, env):
+        full = dict(os.environ)
+        full.pop("XYLEM_CAMBIUM_PATH", None)
+        full.update(env)
+        return subprocess.run(
+            [sys.executable, self.SCRIPT], env=full,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    def test_unset_path_exits_zero_and_skips(self):
+        proc = self._run({"XYLEM_CAMBIUM_PATH": ""})
+        self.assertEqual(proc.returncode, 0)
+        # stderr is strictly ASCII-decodable (Windows cp1252 console safety).
+        proc.stderr.decode("ascii")
+        self.assertIn(b"cambium not configured", proc.stderr)
+
+    def test_bad_path_exits_zero_and_skips(self):
+        proc = self._run({"XYLEM_CAMBIUM_PATH": "/no/such/cambium_server.py"})
+        self.assertEqual(proc.returncode, 0)
+        proc.stderr.decode("ascii")
+
+
+class BuildSettingsDistillTest(unittest.TestCase):
+    """The full install transform registers the distill hook + cambium env."""
+
+    MANIFEST = {"version": 3, "servers": []}
+
+    def _install(self):
+        settings = {}
+        build_settings_install(
+            settings, self.MANIFEST, mapping={}, ck_server_path="/x/ck.py",
+            cambium_server_path="/x/cambium/cambium_server.py",
+            hook_command=COMMAND, version_check_command=VERSION_CHECK_COMMAND,
+            distill_command=DISTILL_COMMAND, warn=lambda m: None)
+        return settings
+
+    def test_install_registers_distill_hook_under_session_end(self):
+        settings = self._install()
+        groups = settings["hooks"]["SessionEnd"]
+        commands = [h["command"] for g in groups for h in g["hooks"]]
+        self.assertIn(DISTILL_COMMAND, commands)
+        # SessionStart still carries the two original hooks.
+        ss_commands = [h["command"]
+                       for g in settings["hooks"]["SessionStart"]
+                       for h in g["hooks"]]
+        self.assertIn(COMMAND, ss_commands)
+        self.assertIn(VERSION_CHECK_COMMAND, ss_commands)
+
+    def test_install_sets_cambium_env(self):
+        settings = self._install()
+        self.assertEqual(settings["env"][CAMBIUM_ENV_KEY],
+                         "/x/cambium/cambium_server.py")
+
+    def test_uninstall_removes_distill_hook_and_env(self):
+        settings = self._install()
+        build_settings_uninstall(settings, self.MANIFEST)
+        # Every Xylem hook and env key gone.
+        self.assertNotIn("hooks", settings)
+        self.assertNotIn("env", settings)
 
 
 if __name__ == "__main__":
