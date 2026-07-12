@@ -93,11 +93,53 @@ def _configured_result(result):
     return False, None
 
 
+def _session_repo():
+    """The git root of the session's project, from the SessionEnd hook payload
+    on stdin (Claude Code passes JSON including `cwd`). Empty if unavailable.
+
+    Lets one global hook distill whichever project the session ran in, all
+    feeding the single org knowledge repo — the right model when the operator
+    is the org and works across many solo projects. Fail-soft: any problem
+    reading or parsing the payload just yields "" and cambium falls back to its
+    own cwd default.
+    """
+    try:
+        if sys.stdin is None or sys.stdin.isatty():
+            return ""
+        raw = sys.stdin.read()
+    except Exception:
+        return ""
+    if not raw or not raw.strip():
+        return ""
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        return ""
+    cwd = payload.get("cwd") if isinstance(payload, dict) else None
+    if not isinstance(cwd, str) or not cwd.strip():
+        return ""
+    d = os.path.abspath(cwd.strip())
+    while d:
+        if os.path.isdir(os.path.join(d, ".git")):
+            return d
+        parent = os.path.dirname(d)
+        if parent == d:
+            return ""
+        d = parent
+    return ""
+
+
 def main():
     server_path = _resolve_server_path()
     if not server_path:
         _emit(SKIP_MSG)
         return 0
+
+    # Point cambium at the project this session ran in (unless explicitly
+    # configured), so a global hook captures whichever repo you were working in.
+    repo = _session_repo()
+    if repo and not os.environ.get("CAMBIUM_REPO"):
+        os.environ["CAMBIUM_REPO"] = repo
 
     module = _load_server(server_path)
     if module is None:

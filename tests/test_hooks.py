@@ -198,6 +198,7 @@ class DistillHookScriptTest(unittest.TestCase):
         full.update(env)
         return subprocess.run(
             [sys.executable, self.SCRIPT], env=full,
+            stdin=subprocess.DEVNULL,  # hook reads a SessionEnd payload from stdin
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     def test_unset_path_exits_zero_and_skips(self):
@@ -211,6 +212,50 @@ class DistillHookScriptTest(unittest.TestCase):
         proc = self._run({"XYLEM_CAMBIUM_PATH": "/no/such/cambium_server.py"})
         self.assertEqual(proc.returncode, 0)
         proc.stderr.decode("ascii")
+
+
+class SessionRepoTest(unittest.TestCase):
+    """_session_repo() resolves the session's project (git root) from the
+    SessionEnd payload cwd, so a global hook distills whichever repo you were in."""
+
+    def _load_hook(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "session_end_hook",
+            os.path.join(ROOT, "artifacts", "session_end_hook.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_resolves_git_root_from_payload_cwd(self):
+        import io, json, tempfile, shutil
+        mod = self._load_hook()
+        d = tempfile.mkdtemp()
+        try:
+            sub = os.path.join(d, "proj", "src")
+            os.makedirs(sub)
+            os.makedirs(os.path.join(d, "proj", ".git"))
+            old = sys.stdin
+            sys.stdin = io.StringIO(json.dumps({"cwd": sub}))
+            try:
+                repo = mod._session_repo()
+            finally:
+                sys.stdin = old
+            self.assertTrue(os.path.samefile(repo, os.path.join(d, "proj")))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_bad_or_empty_payload_yields_empty(self):
+        import io, json
+        mod = self._load_hook()
+        for raw in ("", "   ", "not json", json.dumps({"no_cwd": 1}),
+                    json.dumps({"cwd": "/path/with/no/git/anywhere/xyzzy"})):
+            old = sys.stdin
+            sys.stdin = io.StringIO(raw)
+            try:
+                self.assertEqual(mod._session_repo(), "")
+            finally:
+                sys.stdin = old
 
 
 class BuildSettingsDistillTest(unittest.TestCase):
