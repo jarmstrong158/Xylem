@@ -21,6 +21,7 @@ Wiring an MCP server into a config file makes a capability *available*. It does 
 The habit layer closes that gap. Alongside registering the servers, the installer injects a fenced discipline block into your Claude Code `CLAUDE.md` and installs a `/xylem-discipline` slash command, so the behavior is part of the agent's standing instructions rather than something you have to remember to prompt for. The block is short and load-bearing:
 
 - **Remember** — at session start a context-keeper project summary is injected via hook; active constraints are treated as binding, and settled decisions are not silently re-litigated.
+- **Recall & compound** — before starting work, `recall()` what the team already learned from cambium (past outcomes, gotchas, decisions); as work completes, a `SessionEnd` hook `distill()`s finished agentsync claims and context-keeper decisions into cambium automatically, so knowledge compounds instead of evaporating.
 - **Coordinate** — before multi-file or long-running work, survey the agentsync board and claim what you'll touch; never force over an active peer's claim without asking.
 - **Ask by default** — on any judgment call with more than one defensible answer, post to the agentsync mailbox (which reaches your phone) and carry on with non-dependent work rather than guessing or blocking.
 - **Record as you go** — architectural decisions land in context-keeper *at the moment they're made*, with rationale, not batched at the end.
@@ -41,7 +42,7 @@ That single run:
 
 1. **Registers the enabled MCP servers** in your Claude Code `settings.json` — stdio for the local servers, http for the remote Workers.
 2. **Injects the habit block** into `CLAUDE.md`, stamped with the current manifest version.
-3. **Wires two `SessionStart` hooks** — context-keeper's memory injection, and the version check below.
+3. **Wires the hooks** — two `SessionStart` hooks (context-keeper's memory injection and the version check below) and a `SessionEnd` hook that runs cambium's `distill()`, so finished work is captured into the knowledge layer automatically instead of only when an agent remembers to.
 4. **Installs the `/xylem-discipline` slash command.**
 
 It's additive (never clobbers a foreign server or your prose), backs up every file before its first write as `*.xylem-backup`, and is idempotent — a second run computes identical bytes and writes nothing. Remote Worker URLs and tokens are read at install time from the environment, never committed. Target a single project's `CLAUDE.md` instead of the global one with `--project PATH`.
@@ -52,7 +53,7 @@ Prefer to wire the raw servers into a *different* editor — Cursor, Windsurf, V
 
 The habit block gets sharper over time, and an install that silently goes stale is worse than no signal. So the version travels with the block:
 
-- **`manifest.json` `"version"` (an integer) is the single source of truth.** The installer stamps the begin fence as `<!-- XYLEM:BEGIN vN -->` from that value; the current template is **v2**. A legacy unstamped block counts as v1.
+- **`manifest.json` `"version"` (an integer) is the single source of truth.** The installer stamps the begin fence as `<!-- XYLEM:BEGIN vN -->` from that value; the current template is **v3** (v3 wired the `SessionEnd` distill hook into the habit layer). A legacy unstamped block counts as v1.
 - **A `SessionStart` hook (`version_check.py`) compares** the version stamped into your installed block against the template — fetching `origin` first, so the nudge fires the moment a new version is *published upstream*, before you've even pulled. If several `CLAUDE.md` copies carry a block (say a global one and one committed into a repo), the lowest wins, so any stale copy is caught.
 - **On a match it prints nothing** — a current machine spends zero model tokens on the check. When you're behind, it prints one ASCII line pointing at the fix.
 - **`xylem update` is that fix.** `installer.py update` git-pulls this repo and re-applies the block with the current stamp, reporting `old → new` and which files changed. It is the *only* path that rewrites a block — the check only ever detects.
@@ -76,7 +77,7 @@ Surgical and symmetric with install:
 ./install.sh --uninstall              # apply
 ```
 
-It removes **only Xylem-owned entries** — the suite's MCP servers, both `SessionStart` hooks, the owned `env` key, and the fenced `CLAUDE.md` block — leaving foreign servers, your other hooks, and your own prose intact. The block is found by its fence markers and excised cleanly; the `/xylem-discipline` command file is deleted. Empty containers (an emptied `mcpServers`, `hooks`, or `env`) are pruned so nothing hollow is left behind.
+It removes **only Xylem-owned entries** — the suite's MCP servers, all three hooks (both `SessionStart` hooks and the `SessionEnd` distill hook), the owned `env` keys, and the fenced `CLAUDE.md` block — leaving foreign servers, your other hooks, and your own prose intact. The block is found by its fence markers and excised cleanly; the `/xylem-discipline` command file is deleted. Empty containers (an emptied `mcpServers`, `hooks`, or `env`) are pruned so nothing hollow is left behind.
 
 ## Manifest design
 
