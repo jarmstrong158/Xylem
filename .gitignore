@@ -2,6 +2,10 @@
 *.xylem-backup
 
 # Local untracked config (never commit URLs or secrets)
+# The installer reads xylem.config.json and the example tells users to put their
+# /mcp/<token> connector URLs (whole-URL credentials) there — must stay ignored.
+xylem.config.json
+install/xylem.config.json
 xylem.local.json
 .env
 .env.*
