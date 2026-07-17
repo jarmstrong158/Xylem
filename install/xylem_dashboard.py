@@ -283,12 +283,20 @@ def discover_projects(cfg, extra):
 # --------------------------------------------------------------------------- #
 # REMOTE collectors (token, from local config)
 # --------------------------------------------------------------------------- #
+# A normal browser-like User-Agent. Cloudflare's edge (bot protections) blocks
+# urllib's default "Python-urllib/x.y" UA with a 403 before the request ever
+# reaches the Worker — which returns only 404/405, never 403. Sending a real UA
+# gets past that. (The token still authenticates at the Worker as usual.)
+_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) xylem-dashboard/1.0 Safari/537.36"
+
+
 def rpc_call_tool(url, name, arguments):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                        "params": {"name": name, "arguments": arguments}}).encode("utf-8")
     req = urllib.request.Request(url, data=body,
                                  headers={"content-type": "application/json",
-                                          "accept": "application/json"})
+                                          "accept": "application/json",
+                                          "user-agent": _UA})
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     if data.get("error"):
