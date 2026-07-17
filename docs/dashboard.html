@@ -70,7 +70,7 @@
   .rtag{font-size:10.5px;font-weight:700;letter-spacing:.3px;padding:2px 7px;border-radius:6px;text-transform:lowercase}
   .rtag.xylem{color:var(--xylem);background:rgba(55,211,153,.1)} .rtag.cambium{color:var(--cambium);background:rgba(45,212,191,.1)}
   .rtag.ck{color:var(--ck);background:rgba(91,157,255,.1)} .rtag.agentsync{color:var(--agentsync);background:rgba(167,139,250,.1)}
-  .rtag.balatron{color:var(--consumer);background:rgba(224,164,94,.1)}
+  .rtag.balatron,.rtag.clark-mcp,.rtag.skillmatch-mcp,.rtag.rag-pipeline{color:var(--consumer);background:rgba(224,164,94,.1)}
   .who{font-size:10.5px;color:var(--faint)}
   .who .desk{color:#9db4d6}.who .mob{color:#c9a3e6}
   .st{font-size:10px;font-weight:700;letter-spacing:.4px;padding:2px 7px;border-radius:6px;text-transform:uppercase;white-space:nowrap}
@@ -127,7 +127,7 @@
   <div class="head">
     <div>
       <h1><span class="grad">Xylem Stack</span> — Live Observability</h1>
-      <div class="sub">One operator, two peers, four repos, one shared brain. Every claim, release, and recorded decision flowing through the memory + coordination mesh — so you can actually <em>see</em> it work.</div>
+      <div class="sub">One operator, two peers, one shared brain spanning every repo in the org. Every claim, release, and recorded decision flowing through the memory + coordination mesh — so you can actually <em>see</em> it work.</div>
     </div>
     <div class="stamp"><span class="dot"></span>live snapshot · 2026-07-17<br><span style="color:#42506a">source: agentsync board + context-keeper</span></div>
   </div>
@@ -181,7 +181,7 @@
         <div id="byproj"></div>
       </div>
       <div>
-        <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Recent decisions across the stack</div>
+        <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Recent decisions across the org</div>
         <div class="dlist" id="decisions"></div>
       </div>
     </div>
@@ -194,7 +194,7 @@
       <span><i class="sw" style="background:var(--cambium)"></i>cambium</span>
       <span><i class="sw" style="background:var(--ck)"></i>context-keeper</span>
       <span><i class="sw" style="background:var(--agentsync)"></i>agentsync</span>
-      <span><i class="sw" style="background:var(--consumer)"></i>balatron (consumer)</span>
+      <span><i class="sw" style="background:var(--consumer)"></i>consumer projects (balatron, clark-mcp, skillmatch-mcp, rag-pipeline)</span>
     </div>
   </div>
 
@@ -271,10 +271,13 @@ const events = [
 
 // decisions per context-keeper store (active)
 const stores = [
-  {p:'balatron', dec:74, con:18, note:'consumer', cls:'balatron'},
+  {p:'balatron', dec:74, con:18, cls:'balatron'},
   {p:'context-keeper', dec:13, con:7, cls:'ck'},
+  {p:'clark-mcp', dec:7, con:2, cls:'clark-mcp'},
   {p:'cambium', dec:7, con:2, cls:'cambium'},
+  {p:'skillmatch-mcp', dec:4, con:3, cls:'skillmatch-mcp'},
   {p:'xylem', dec:4, con:0, cls:'xylem'},
+  {p:'rag-pipeline', dec:2, con:0, cls:'rag-pipeline'},
 ];
 
 // recent decisions across the stack (not the consumer project)
@@ -288,11 +291,16 @@ const decisions = [
   {id:'xylem/dec-002', repo:'xylem', t:'Version signals shipped (PR #10); .context/ gitignored so memory never lands in the public repo.'},
   {id:'cambium/dec-003', repo:'cambium', t:'Gate team→org on generalization — project-specific bodies refused unless restated.'},
   {id:'ck/dec-009', repo:'ck', t:'Fixed the summary-truncation loop; added topic clustering + embedding backends.'},
+  {id:'clark-mcp/dec-007', repo:'clark-mcp', t:'QLoRA fine-tune (clark-hermes3:ft) passes the eval gate vs base on every metric — but a live multi-turn smoke still surfaced numeric-fact hallucination + context loss.'},
+  {id:'skillmatch-mcp/dec-004', repo:'skillmatch-mcp', t:'Multi-resume variants with auto-selection by role_type from the parsed job description.'},
+  {id:'rag-pipeline/dec-002', repo:'rag-pipeline', t:'Use llama-cpp-python with GGUF files from HuggingFace instead of Ollama.'},
 ];
 
 // ---- RENDER ----
-const repoName = {xylem:'xylem', cambium:'cambium', ck:'context-keeper', agentsync:'agentsync', balatron:'balatron'};
-const repoVar = {xylem:'--xylem', cambium:'--cambium', ck:'--ck', agentsync:'--agentsync', balatron:'--consumer'};
+const repoName = {xylem:'xylem', cambium:'cambium', ck:'context-keeper', agentsync:'agentsync', balatron:'balatron',
+  'clark-mcp':'clark-mcp', 'skillmatch-mcp':'skillmatch-mcp', 'rag-pipeline':'rag-pipeline'};
+const repoVar = {xylem:'--xylem', cambium:'--cambium', ck:'--ck', agentsync:'--agentsync', balatron:'--consumer',
+  'clark-mcp':'--consumer', 'skillmatch-mcp':'--consumer', 'rag-pipeline':'--consumer'};
 
 // KPIs
 const doneCount = events.filter(e=>e.status==='done').length;
