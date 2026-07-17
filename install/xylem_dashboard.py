@@ -476,6 +476,13 @@ def main(argv=None):
     )
     print("Collected: " + totals)
 
+    if route == "remote" and not data["stores"] and not data["events"]:
+        print("Refusing to write: the remote route collected no projects and no "
+              "coordination events (Workers unreachable or misconfigured). Keeping "
+              "any existing output rather than overwriting it with an empty dashboard.",
+              file=sys.stderr)
+        return 2
+
     if args.dry_run:
         print("\nDry-run — no file written. Data summary above; rerun without --dry-run to write %s." % args.output)
         return 0
