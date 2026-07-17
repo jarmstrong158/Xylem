@@ -87,3 +87,37 @@ Detected agents and their MCP config files:
 
 Adding a new agent is a new `Adapter(...)` entry in `xylem_install.py`; adding or
 re-transporting a server is a one-entry edit in `servers.json`.
+
+## Observability dashboard
+
+`xylem_dashboard.py` bakes a single self-contained `dashboard.html` from your own
+org's activity — coordination traffic, decision memory per project, and (if you
+use cambium) the knowledge funnel. It reads `dashboard.template.html` and injects
+your data; only names, counts, and short summaries land in the HTML — never a
+token.
+
+Two routes:
+
+```sh
+# LOCAL (default, no token): reads the agentsync branch of AGENTSYNC_REPO via git
+# and scans each project clone's .context/ store. Sees every project on this machine.
+python3 install/xylem_dashboard.py --output ~/xylem-dashboard.html
+python3 install/xylem_dashboard.py --projects /path/to/repoA /path/to/repoB   # add more clones
+python3 install/xylem_dashboard.py --dry-run                                   # summarize, write nothing
+
+# REMOTE (opt-in): reads the Cloudflare Workers via the *_REMOTE_URL values in your
+# gitignored xylem.config.json — the full central mirror, incl. work from other
+# machines/mobile. The token stays in local config.
+python3 install/xylem_dashboard.py --remote --output ~/xylem-dashboard.html
+```
+
+Which projects the **local** route includes: it auto-uses `CONTEXT_KEEPER_PROJECT`,
+`CAMBIUM_REPO`, and `AGENTSYNC_REPO`, plus anything in `XYLEM_DASHBOARD_PROJECTS`
+(or every `.context/`-bearing clone under `XYLEM_PROJECTS_ROOT`). The **remote**
+route enumerates the whole org automatically via context-keeper-remote's
+`list_projects` (which reports exact, case-sensitive project names — no guessing).
+
+Every collector fails soft: a missing clone, absent branch, or unreachable Worker
+degrades that panel to empty with a warning; the dashboard still renders. Re-run it
+(or wire it into a hook / cron) to refresh. Nothing secret is ever written to the
+output.
