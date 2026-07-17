@@ -88,7 +88,7 @@
   /* mini charts */
   .subcard{margin-bottom:16px}
   .subcard:last-child{margin-bottom:0}
-  .bars{display:flex;align-items:flex-end;gap:5px;height:96px;padding-top:6px}
+  .bars{display:flex;align-items:flex-end;gap:5px;height:128px;padding-top:6px}
   .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px}
   .bar .col{width:100%;max-width:20px;background:linear-gradient(180deg,var(--ck),#2a5fb0);border-radius:4px 4px 2px 2px;min-height:3px;transition:height .5s}
   .bar .bl{font-size:9px;color:var(--faint)}
@@ -97,7 +97,9 @@
   .row{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:12.5px}
   .row .lab{width:96px;color:var(--dim);flex-shrink:0}
   .row .track{flex:1;height:9px;background:#0e1420;border-radius:6px;overflow:hidden}
-  .row .fill{height:100%;border-radius:6px}
+  /* the fill is emitted as a <span>; inline elements ignore width/height, which
+     collapsed every bar to 0x0 (invisible). Block it so the width% applies. */
+  .row .fill{display:block;height:100%;border-radius:6px}
   .row .val{width:34px;text-align:right;color:var(--ink);font-weight:650;font-size:12px}
 
   /* funnel */
@@ -253,7 +255,7 @@
   events.forEach(e=>{ const w=e.when||''; if(!(w in dayMap)){dayMap[w]=0;dayOrder.push(w);} dayMap[w]++; });
   dayOrder.sort();
   const maxDay=Math.max(1,...Object.values(dayMap));
-  document.getElementById('bars').innerHTML=dayOrder.map(d=>{ const h=Math.round(dayMap[d]/maxDay*80)+6;
+  document.getElementById('bars').innerHTML=dayOrder.map(d=>{ const h=Math.round(dayMap[d]/maxDay*74)+6;
     return `<div class="bar"><div class="bv">${dayMap[d]}</div><div class="col" style="height:${h}px"></div><div class="bl">${esc(String(d).slice(3))}</div></div>`; }).join('');
 
   const repoCounts={}; events.forEach(e=>repoCounts[e.repo]=(repoCounts[e.repo]||0)+1);
