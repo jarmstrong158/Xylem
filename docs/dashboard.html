@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Xylem Stack — Live Observability</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#121722; --panel2:#161d2b; --line:#222c3d;
+    --ink:#e7ecf4; --dim:#8a97ab; --faint:#5c6879;
+    --xylem:#37d399; --cambium:#2dd4bf; --ck:#5b9dff; --agentsync:#a78bfa; --consumer:#e0a45e;
+    --good:#37d399; --warn:#f0b45e; --live:#ff5d6c;
+    --shadow:0 1px 0 rgba(255,255,255,.03), 0 12px 30px -12px rgba(0,0,0,.6);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;line-height:1.5}
+  a{color:inherit}
+  .wrap{max-width:1180px;margin:0 auto;padding:26px 18px 60px}
+  .head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px;margin-bottom:6px}
+  h1{font-size:26px;margin:0;letter-spacing:-.4px;font-weight:700}
+  h1 .grad{background:linear-gradient(90deg,var(--xylem),var(--ck));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--dim);font-size:14px;margin-top:4px;max-width:640px}
+  .stamp{font-size:12px;color:var(--faint);text-align:right;white-space:nowrap}
+  .stamp .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--live);margin-right:6px;
+    box-shadow:0 0 0 0 rgba(255,93,108,.6);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(255,93,108,.5)}70%{box-shadow:0 0 0 7px rgba(255,93,108,0)}100%{box-shadow:0 0 0 0 rgba(255,93,108,0)}}
+
+  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:22px 0}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 14px 12px;box-shadow:var(--shadow)}
+  .kpi .n{font-size:26px;font-weight:750;letter-spacing:-.5px}
+  .kpi .l{font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;margin-top:2px}
+
+  .grid{display:grid;gap:16px}
+  .cols{grid-template-columns:1.35fr 1fr}
+  @media(max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}.cols{grid-template-columns:1fr}}
+  @media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr)}}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow)}
+  .card h2{font-size:12px;letter-spacing:.9px;text-transform:uppercase;color:var(--dim);margin:0 0 14px;font-weight:650}
+  .card h2 .c{color:var(--faint);font-weight:500;text-transform:none;letter-spacing:0}
+
+  /* stack components */
+  .stack{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  @media(max-width:900px){.stack{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:480px){.stack{grid-template-columns:1fr}}
+  .comp{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:14px;position:relative;overflow:hidden}
+  .comp:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ck)}
+  .comp.xylem:before{background:var(--xylem)} .comp.cambium:before{background:var(--cambium)}
+  .comp.ck:before{background:var(--ck)} .comp.agentsync:before{background:var(--agentsync)}
+  .comp .nm{font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px}
+  .comp .role{font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
+  .comp .desc{font-size:12.5px;color:var(--dim);margin:9px 0 11px;min-height:54px}
+  .comp .meta{display:flex;gap:6px;flex-wrap:wrap}
+  .pill{font-size:11px;padding:3px 8px;border-radius:999px;background:#0e1420;border:1px solid var(--line);color:var(--dim)}
+  .pill b{color:var(--ink);font-weight:650}
+
+  /* traffic feed */
+  .feed{max-height:520px;overflow:auto;margin:-4px -4px 0;padding:0 4px}
+  .feed::-webkit-scrollbar{width:8px}.feed::-webkit-scrollbar-thumb{background:#232c3c;border-radius:8px}
+  .ev{display:grid;grid-template-columns:14px 1fr auto;gap:11px;padding:11px 2px;border-bottom:1px solid #1a2231;align-items:start}
+  .ev:last-child{border-bottom:0}
+  .rail{position:relative;height:100%;display:flex;justify-content:center;padding-top:5px}
+  .node{width:9px;height:9px;border-radius:50%;background:var(--ck);box-shadow:0 0 0 3px rgba(91,157,255,.12)}
+  .ev.live .node{background:var(--live);box-shadow:0 0 0 3px rgba(255,93,108,.18)}
+  .ev .ttl{font-size:13.5px;font-weight:600}
+  .ev .desc{font-size:12px;color:var(--dim);margin-top:2px}
+  .tags{display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap}
+  .rtag{font-size:10.5px;font-weight:700;letter-spacing:.3px;padding:2px 7px;border-radius:6px;text-transform:lowercase}
+  .rtag.xylem{color:var(--xylem);background:rgba(55,211,153,.1)} .rtag.cambium{color:var(--cambium);background:rgba(45,212,191,.1)}
+  .rtag.ck{color:var(--ck);background:rgba(91,157,255,.1)} .rtag.agentsync{color:var(--agentsync);background:rgba(167,139,250,.1)}
+  .rtag.balatron{color:var(--consumer);background:rgba(224,164,94,.1)}
+  .who{font-size:10.5px;color:var(--faint)}
+  .who .desk{color:#9db4d6}.who .mob{color:#c9a3e6}
+  .st{font-size:10px;font-weight:700;letter-spacing:.4px;padding:2px 7px;border-radius:6px;text-transform:uppercase;white-space:nowrap}
+  .st.done{color:var(--good);background:rgba(55,211,153,.09)}
+  .st.live{color:var(--live);background:rgba(255,93,108,.1)}
+  .when{font-size:11px;color:var(--faint);white-space:nowrap;text-align:right}
+
+  /* mini charts */
+  .subcard{margin-bottom:16px}
+  .subcard:last-child{margin-bottom:0}
+  .bars{display:flex;align-items:flex-end;gap:5px;height:96px;padding-top:6px}
+  .bar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px}
+  .bar .col{width:100%;max-width:20px;background:linear-gradient(180deg,var(--ck),#2a5fb0);border-radius:4px 4px 2px 2px;min-height:3px;transition:height .5s}
+  .bar .bl{font-size:9px;color:var(--faint)}
+  .bar .bv{font-size:10px;color:var(--dim);font-weight:600}
+
+  .row{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:12.5px}
+  .row .lab{width:96px;color:var(--dim);flex-shrink:0}
+  .row .track{flex:1;height:9px;background:#0e1420;border-radius:6px;overflow:hidden}
+  .row .fill{height:100%;border-radius:6px}
+  .row .val{width:34px;text-align:right;color:var(--ink);font-weight:650;font-size:12px}
+
+  /* funnel */
+  .funnel{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;align-items:stretch}
+  @media(max-width:560px){.funnel{grid-template-columns:1fr}}
+  .fstage{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:16px;text-align:center;position:relative}
+  .fstage .fn{font-size:32px;font-weight:780;letter-spacing:-1px}
+  .fstage .fl{font-size:11px;text-transform:uppercase;letter-spacing:.7px;color:var(--dim);margin-top:2px}
+  .fstage .fd{font-size:11.5px;color:var(--faint);margin-top:7px}
+  .fstage .arrow{position:absolute;right:-14px;top:50%;transform:translateY(-50%);color:var(--faint);font-size:18px;z-index:2}
+  @media(max-width:560px){.fstage .arrow{display:none}}
+  .s1 .fn{color:var(--consumer)} .s2 .fn{color:var(--cambium)} .s3 .fn{color:var(--xylem)}
+
+  /* decisions */
+  .dgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:760px){.dgrid{grid-template-columns:1fr}}
+  .dlist{max-height:250px;overflow:auto;padding-right:4px}
+  .dlist::-webkit-scrollbar{width:8px}.dlist::-webkit-scrollbar-thumb{background:#232c3c;border-radius:8px}
+  .drow{padding:9px 0;border-bottom:1px solid #1a2231}
+  .drow:last-child{border-bottom:0}
+  .drow .dt{font-size:12.5px;color:var(--ink)}
+  .drow .dm{display:flex;gap:8px;align-items:center;margin-top:4px}
+  .did{font-size:10.5px;color:var(--faint);font-family:ui-monospace,Menlo,monospace}
+
+  .foot{margin-top:26px;color:var(--faint);font-size:11.5px;text-align:center;line-height:1.7}
+  .legend{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+  .legend span{display:flex;align-items:center;gap:6px}
+  .sw{width:9px;height:9px;border-radius:3px;display:inline-block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div>
+      <h1><span class="grad">Xylem Stack</span> — Live Observability</h1>
+      <div class="sub">One operator, two peers, four repos, one shared brain. Every claim, release, and recorded decision flowing through the memory + coordination mesh — so you can actually <em>see</em> it work.</div>
+    </div>
+    <div class="stamp"><span class="dot"></span>live snapshot · 2026-07-17<br><span style="color:#42506a">source: agentsync board + context-keeper</span></div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <!-- THE STACK -->
+  <div class="card" style="margin-bottom:16px">
+    <h2>The Stack <span class="c">— four components, one compound-growth loop</span></h2>
+    <div class="stack" id="stack"></div>
+  </div>
+
+  <!-- TRAFFIC + CHARTS -->
+  <div class="grid cols" style="margin-bottom:16px">
+    <div class="card">
+      <h2>Coordination Traffic <span class="c">— the agentsync mesh, newest first</span></h2>
+      <div class="feed" id="feed"></div>
+    </div>
+    <div>
+      <div class="card subcard">
+        <h2>Activity / Day</h2>
+        <div class="bars" id="bars"></div>
+      </div>
+      <div class="card subcard">
+        <h2>Work by Repo</h2>
+        <div id="byrepo"></div>
+      </div>
+      <div class="card subcard">
+        <h2>Peers</h2>
+        <div id="bypeer"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FUNNEL -->
+  <div class="card" style="margin-bottom:16px">
+    <h2>Knowledge Funnel <span class="c">— cambium org harvest, 8 repos swept → federated brain</span></h2>
+    <div class="funnel">
+      <div class="fstage s1"><div class="fn">132</div><div class="fl">Distilled</div><div class="fd">session outcomes mined into candidate knowledge</div><div class="arrow">→</div></div>
+      <div class="fstage s2"><div class="fn">90</div><div class="fl">Teamed</div><div class="fd">passed the recall≥3 gate, promoted to team scope</div><div class="arrow">→</div></div>
+      <div class="fstage s3"><div class="fn">9</div><div class="fl">Org brain</div><div class="fd">endorsed as universal, generalized, merged to <code>knowledge</code></div></div>
+    </div>
+  </div>
+
+  <!-- DECISIONS -->
+  <div class="card">
+    <h2>Decision Memory <span class="c">— what context-keeper has captured</span></h2>
+    <div class="dgrid">
+      <div>
+        <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px">Decisions per store</div>
+        <div id="byproj"></div>
+      </div>
+      <div>
+        <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px">Recent decisions across the stack</div>
+        <div class="dlist" id="decisions"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Built from live data — <b id="evcount"></b> coordination events on <code>jarmstrong158/agentsync-remote</code> · <b id="deccount"></b> decisions + <b id="concount"></b> constraints in context-keeper.
+    <div class="legend">
+      <span><i class="sw" style="background:var(--xylem)"></i>xylem</span>
+      <span><i class="sw" style="background:var(--cambium)"></i>cambium</span>
+      <span><i class="sw" style="background:var(--ck)"></i>context-keeper</span>
+      <span><i class="sw" style="background:var(--agentsync)"></i>agentsync</span>
+      <span><i class="sw" style="background:var(--consumer)"></i>balatron (consumer)</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ---- LIVE DATA (from agentsync board history + context-keeper summaries) ----
+const components = [
+  {key:'xylem', nm:'xylem', role:'habit layer',
+   desc:'SessionStart/SessionEnd hooks, installer, replay player and version nudges. Makes the memory discipline automatic in every Claude session — no willpower required.',
+   pills:[['decisions',4],['repo','xylem']]},
+  {key:'cambium', nm:'cambium', role:'knowledge distillation',
+   desc:'Distills session outcomes into knowledge and promotes it team→org through endorsement + generalization gates. Solo-operator-is-org fast lane.',
+   pills:[['decisions',7],['constraints',2]]},
+  {key:'ck', nm:'context-keeper', role:'decision memory',
+   desc:'Records decisions, constraints and pipelines per project, with a Cloudflare Worker remote mirror (dual-write, newest-wins upsert). The canonical store.',
+   pills:[['decisions',13],['constraints',7]]},
+  {key:'agentsync', nm:'agentsync', role:'coordination mesh',
+   desc:'Claim/release board with overlap CAS and a human-in-the-loop mailbox. Makes the phone a first-class peer alongside the desktop — no local clone.',
+   pills:[['events',61],['peers',2]]},
+];
+
+// completed work items (each agentsync task once) + the current in-progress claim
+const events = [
+  {t:'Post-audit fixes: revert margin reward, repair the eval harness, build the escape hatch', repo:'balatron', who:'desktop', when:'07-17', status:'live',
+   desc:'The stack routing three linked fixes through one claim — currently in progress.'},
+  {t:'Consumable-slot clog fix', repo:'balatron', who:'desktop', when:'07-17', status:'done',
+   desc:'dec-072 · targeted consumables no longer clog slots · 176 tests · deployed'},
+  {t:'Deep ante audit — root-caused the ante 4–5 wall', repo:'balatron', who:'desktop', when:'07-16', status:'done',
+   desc:'read-only investigation → play-frequency-weighted scoring hypothesis'},
+  {t:'Overbuilding leak fix — bank interest when already clearing', repo:'balatron', who:'desktop', when:'07-14', status:'done',
+   desc:'dec-068 · 24 SAVE events verified live · 167 tests'},
+  {t:'Winning-trend miner — contrastive analyzer over 89k runs', repo:'balatron', who:'desktop', when:'07-14', status:'done',
+   desc:'dec-066 · margin is the dominant reach-8 predictor · 164 tests'},
+  {t:'Planner economy valuation + seal acquisition', repo:'balatron', who:'desktop', when:'07-13', status:'done',
+   desc:'dec-065 · values the 62/150 jokers it was blind to · 159 tests'},
+  {t:'cambium + xylem made project-aware', repo:'cambium', who:'desktop', when:'07-12', status:'done',
+   desc:'cambium#8 + xylem#16 · one config serves every project → one brain'},
+  {t:'context-keeper-remote audit fixes', repo:'ck', who:'mobile', when:'07-12', status:'done',
+   desc:'PR #3 · README tool-table drift + insertEntry retry bound'},
+  {t:'Org-promotion generalization gate', repo:'cambium', who:'desktop', when:'07-12', status:'done',
+   desc:'PR #7 · project-local bodies refused at the org boundary · 58 tests'},
+  {t:'Demojibake at write-time + data repair', repo:'cambium', who:'desktop', when:'07-12', status:'done',
+   desc:'cambium#6 + knowledge#10 · cp1252 fix at the single write chokepoint'},
+  {t:'Real-usage replay player', repo:'xylem', who:'mobile', when:'07-11', status:'done',
+   desc:'replays a real session timeline for the demo'},
+  {t:'Demo timeline export', repo:'xylem', who:'desktop', when:'07-11', status:'done',
+   desc:'28 events across 3 storylines · all provenance links verified real'},
+  {t:'Docs sweep round 2 — manifest bug fixed', repo:'xylem', who:'desktop', when:'07-11', status:'done',
+   desc:'context-keeper-remote flipped available:true so the installer registers it'},
+  {t:'README sweep across all repos', repo:'xylem', who:'desktop', when:'07-11', status:'done',
+   desc:'repaired CK storage tree + agentsync gh-CLI note'},
+  {t:'Live KNOWLEDGE.md export', repo:'cambium', who:'desktop', when:'07-10', status:'done',
+   desc:'all 9 org items rendered clean — first field test of the mojibake fix'},
+  {t:'agentsync-remote handshake hardening', repo:'agentsync', who:'desktop', when:'07-10', status:'done',
+   desc:'lazy migrations → sub-ms cold-start handshake on both Workers · 47+44 tests'},
+  {t:'export_markdown + mojibake fix', repo:'cambium', who:'mobile', when:'07-10', status:'done',
+   desc:'staked from the phone as a board proxy when the connector dropped'},
+  {t:'Crawl-livelock breaker + INVALID_STATE trace', repo:'balatron', who:'desktop', when:'07-10', status:'done',
+   desc:'dec-063/064 · wall-clock safety checkpoint · 146 tests'},
+  {t:'Push habit layer + wording fixes', repo:'xylem', who:'desktop', when:'07-10', status:'done',
+   desc:'PR #9 · installer, artifacts, hooks all live on main'},
+  {t:'Org harvest — 8 repos swept', repo:'cambium', who:'desktop', when:'07-10', status:'done',
+   desc:'132 distilled → 90 teamed → 9 org · PRs #3–#9 merged serially'},
+  {t:'Habit-layer build — installer + tests', repo:'xylem', who:'desktop', when:'07-10', status:'done',
+   desc:'idempotent, backup-safe installer · 34 tests'},
+  {t:'context-keeper dual-write mirror', repo:'ck', who:'desktop', when:'07-10', status:'done',
+   desc:'dec-012 · local canonical, remote sync · 17 mirror tests'},
+  {t:'Build agentsync-remote — phone-as-peer Worker', repo:'agentsync', who:'mobile', when:'07-08', status:'done',
+   desc:'PR #1/#2 · CF Worker MCP peer · CAS over GitHub · 44 tests'},
+  {t:'Mobile test claim — phone-as-peer demo', repo:'agentsync', who:'mobile', when:'07-08', status:'done',
+   desc:'first claim staked from claude.ai on a phone (@ Knoebels)'},
+];
+
+// decisions per context-keeper store (active)
+const stores = [
+  {p:'balatron', dec:74, con:18, note:'consumer', cls:'balatron'},
+  {p:'context-keeper', dec:13, con:7, cls:'ck'},
+  {p:'cambium', dec:7, con:2, cls:'cambium'},
+  {p:'xylem', dec:4, con:0, cls:'xylem'},
+];
+
+// recent decisions across the stack (not the consumer project)
+const decisions = [
+  {id:'ck/dec-013', repo:'ck', t:'Mirror propagates edits + deprecations both ways via remote upsert (newest-wins merge).'},
+  {id:'xylem/dec-004', repo:'xylem', t:'Flip context-keeper-remote to available:true + Bearer auth in the manifest.'},
+  {id:'cambium/dec-007', repo:'cambium', t:'Solo/team auto-detection with a solo fast-lane for org promotion; gate never relaxed.'},
+  {id:'ck/dec-011', repo:'ck', t:'record_decision accepts supersedes=[ids] — a distinct lifecycle from deprecated.'},
+  {id:'cambium/dec-006', repo:'cambium', t:'Hold off on embedding recall until the KB crosses ~100 items; keep the lexical scorer.'},
+  {id:'ck/dec-010', repo:'ck', t:'get_context returns no_confident_match below min_relevance instead of a false top hit.'},
+  {id:'xylem/dec-002', repo:'xylem', t:'Version signals shipped (PR #10); .context/ gitignored so memory never lands in the public repo.'},
+  {id:'cambium/dec-003', repo:'cambium', t:'Gate team→org on generalization — project-specific bodies refused unless restated.'},
+  {id:'ck/dec-009', repo:'ck', t:'Fixed the summary-truncation loop; added topic clustering + embedding backends.'},
+];
+
+// ---- RENDER ----
+const repoName = {xylem:'xylem', cambium:'cambium', ck:'context-keeper', agentsync:'agentsync', balatron:'balatron'};
+const repoVar = {xylem:'--xylem', cambium:'--cambium', ck:'--ck', agentsync:'--agentsync', balatron:'--consumer'};
+
+// KPIs
+const doneCount = events.filter(e=>e.status==='done').length;
+const totalDec = stores.reduce((s,x)=>s+x.dec,0);
+const totalCon = stores.reduce((s,x)=>s+x.con,0);
+const kpis = [
+  {n:'61', l:'mesh events'},
+  {n:'1', l:'live claim'},
+  {n:String(totalDec), l:'decisions'},
+  {n:String(totalCon), l:'constraints'},
+  {n:'9', l:'org knowledge'},
+  {n:'2', l:'peers'},
+];
+document.getElementById('kpis').innerHTML = kpis.map(k=>
+  `<div class="kpi"><div class="n">${k.n}</div><div class="l">${k.l}</div></div>`).join('');
+
+// stack
+document.getElementById('stack').innerHTML = components.map(c=>`
+  <div class="comp ${c.key}">
+    <div class="nm">${c.nm}</div>
+    <div class="role">${c.role}</div>
+    <div class="desc">${c.desc}</div>
+    <div class="meta">${c.pills.map(p=>`<span class="pill"><b>${p[1]}</b> ${p[0]}</span>`).join('')}</div>
+  </div>`).join('');
+
+// feed
+document.getElementById('feed').innerHTML = events.map(e=>`
+  <div class="ev ${e.status==='live'?'live':''}">
+    <div class="rail"><div class="node"></div></div>
+    <div>
+      <div class="ttl">${e.t}</div>
+      <div class="desc">${e.desc}</div>
+      <div class="tags">
+        <span class="rtag ${e.repo}">${repoName[e.repo]}</span>
+        <span class="who">by <span class="${e.who==='desktop'?'desk':'mob'}">jonny-${e.who}</span></span>
+        <span class="st ${e.status}">${e.status==='live'?'in progress':'done'}</span>
+      </div>
+    </div>
+    <div class="when">${e.when}</div>
+  </div>`).join('');
+
+// activity per day
+const dayOrder = [];
+const dayMap = {};
+events.forEach(e=>{ if(!(e.when in dayMap)){dayMap[e.when]=0;dayOrder.push(e.when);} dayMap[e.when]++; });
+dayOrder.sort();
+const maxDay = Math.max(...Object.values(dayMap));
+document.getElementById('bars').innerHTML = dayOrder.map(d=>{
+  const h = Math.round(dayMap[d]/maxDay*80)+6;
+  return `<div class="bar"><div class="bv">${dayMap[d]}</div><div class="col" style="height:${h}px"></div><div class="bl">${d.slice(3)}</div></div>`;
+}).join('');
+
+// by repo
+const repoCounts = {};
+events.forEach(e=>repoCounts[e.repo]=(repoCounts[e.repo]||0)+1);
+const repoMax = Math.max(...Object.values(repoCounts));
+const repoRows = Object.entries(repoCounts).sort((a,b)=>b[1]-a[1]);
+document.getElementById('byrepo').innerHTML = repoRows.map(([r,n])=>`
+  <div class="row">
+    <span class="lab">${repoName[r]}</span>
+    <span class="track"><span class="fill" style="width:${n/repoMax*100}%;background:var(${repoVar[r]})"></span></span>
+    <span class="val">${n}</span>
+  </div>`).join('');
+
+// by peer
+const peerCounts = {desktop:0, mobile:0};
+events.forEach(e=>peerCounts[e.who]++);
+const peerMax = Math.max(peerCounts.desktop, peerCounts.mobile);
+document.getElementById('bypeer').innerHTML = [
+  ['jonny-desktop','desktop','#9db4d6'],['jonny-mobile','mobile','#c9a3e6']
+].map(([lab,k,col])=>`
+  <div class="row">
+    <span class="lab">${lab}</span>
+    <span class="track"><span class="fill" style="width:${peerCounts[k]/peerMax*100}%;background:${col}"></span></span>
+    <span class="val">${peerCounts[k]}</span>
+  </div>`).join('');
+
+// decisions per store
+const decMax = Math.max(...stores.map(s=>s.dec));
+document.getElementById('byproj').innerHTML = stores.map(s=>`
+  <div class="row">
+    <span class="lab">${s.p}</span>
+    <span class="track"><span class="fill" style="width:${s.dec/decMax*100}%;background:var(${repoVar[s.cls]})"></span></span>
+    <span class="val">${s.dec}</span>
+  </div>`).join('');
+
+// recent decisions list
+document.getElementById('decisions').innerHTML = decisions.map(d=>`
+  <div class="drow">
+    <div class="dt">${d.t}</div>
+    <div class="dm"><span class="rtag ${d.repo}">${repoName[d.repo]}</span><span class="did">${d.id}</span></div>
+  </div>`).join('');
+
+// footers
+document.getElementById('evcount').textContent = '61';
+document.getElementById('deccount').textContent = totalDec;
+document.getElementById('concount').textContent = totalCon;
+</script>
+</body>
+</html>
