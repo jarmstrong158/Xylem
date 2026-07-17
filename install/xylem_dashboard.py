@@ -314,7 +314,19 @@ def rpc_call_tool(url, name, arguments):
     result = data.get("result", {})
     if result.get("isError"):
         raise RuntimeError((result.get("content") or [{}])[0].get("text", "tool error"))
-    return result.get("structuredContent") or {}
+    # Prefer structuredContent, but fall back to the JSON in content[].text —
+    # not every MCP server (e.g. agentsync-remote) emits structuredContent, and
+    # without this fallback its survey/history come back empty (silently).
+    sc = result.get("structuredContent")
+    if isinstance(sc, dict) and sc:
+        return sc
+    for item in (result.get("content") or []):
+        if isinstance(item, dict) and item.get("type") == "text" and item.get("text"):
+            try:
+                return json.loads(item["text"])
+            except Exception:
+                pass
+    return sc or {}
 
 
 def excluded_project(name, exclude):
@@ -343,9 +355,14 @@ def read_context_remote(url, exclude=()):
 
 
 # agentsync history commit messages look like:
-#   "agentsync: <agent> claims '<task>'"  /  "agentsync: <agent> releases '<task>'"
-# (task may contain apostrophes, so anchor the closing quote to end-of-string).
-_HIST_RE = re.compile(r"^agentsync:\s+(\S+)\s+(claims|releases)\s+'(.*)'\s*$")
+#   "agentsync: <agent> claims '<task>'"
+#   "agentsync: <agent> releases '<task>'"
+#   "agentsync: <agent> releases '<task>' (freeform completion note...)"
+# The task itself may contain apostrophes and parentheses, and a release often
+# appends a " (note)" after the closing quote, so we match the task lazily up to
+# a closing quote that is followed by either end-of-line or " (" — never anchor
+# the quote to end-of-string, or every release-with-a-note is silently dropped.
+_HIST_RE = re.compile(r"^agentsync:\s+(\S+)\s+(claims|releases)\s+'(.*?)'(?:\s+\(|\s*$)")
 
 
 def read_board_remote(url, known):
@@ -380,11 +397,15 @@ def read_board_remote(url, known):
     except Exception as exc:
         warn("agentsync-remote history failed (%s)" % exc)
 
-    # Fall back to survey's current claims if history gave nothing.
-    if not agg:
-        for (agent, task), c in current.items():
-            agg[(agent, task)] = {"first": c.get("updated_at", ""),
-                                  "last": c.get("updated_at", ""),
+    # Always fold in survey's current claims. An active (often in-progress)
+    # claim may not have a matching commit in the fetched history window, and
+    # that live work is exactly what the coordination feed should surface — so
+    # add any claim the history didn't already cover (and if history gave
+    # nothing at all, this is what populates the board).
+    for (agent, task), c in current.items():
+        if (agent, task) not in agg:
+            ts = c.get("updated_at", "")
+            agg[(agent, task)] = {"first": ts, "last": ts,
                                   "released": c.get("status") in ("done", "released")}
 
     events = []
