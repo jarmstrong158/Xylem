@@ -34,6 +34,11 @@
 
   .grid{display:grid;gap:16px}
   .cols{grid-template-columns:1.35fr 1fr}
+  /* grid children default to min-width:auto, which refuses to shrink below their
+     content's intrinsic width — on a narrow phone that forces the columns (and
+     every card) wider than the viewport, so text bleeds off the right edge.
+     min-width:0 lets the tracks shrink and the text wrap instead. */
+  .grid>*{min-width:0}
   @media(max-width:900px){.kpis{grid-template-columns:repeat(3,1fr)}.cols{grid-template-columns:1fr}}
   @media(max-width:560px){.kpis{grid-template-columns:repeat(2,1fr)}}
 
@@ -59,8 +64,10 @@
   /* traffic feed */
   .feed{max-height:520px;overflow:auto;margin:-4px -4px 0;padding:0 4px}
   .feed::-webkit-scrollbar{width:8px}.feed::-webkit-scrollbar-thumb{background:#232c3c;border-radius:8px}
-  .ev{display:grid;grid-template-columns:14px 1fr auto;gap:11px;padding:11px 2px;border-bottom:1px solid #1a2231;align-items:start}
+  .ev{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:11px;padding:11px 2px;border-bottom:1px solid #1a2231;align-items:start}
   .ev:last-child{border-bottom:0}
+  .ev>div{min-width:0}
+  .ev .ttl,.ev .desc{overflow-wrap:anywhere}
   .rail{position:relative;height:100%;display:flex;justify-content:center;padding-top:5px}
   .node{width:9px;height:9px;border-radius:50%;background:var(--ck);box-shadow:0 0 0 3px rgba(91,157,255,.12)}
   .ev.live .node{background:var(--live);box-shadow:0 0 0 3px rgba(255,93,108,.18)}
@@ -107,13 +114,14 @@
   /* decisions */
   .dgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
   @media(max-width:760px){.dgrid{grid-template-columns:1fr}}
-  .dlist{max-height:250px;overflow:auto;padding-right:4px}
+  .dgrid>*{min-width:0}
+  .dlist{max-height:250px;overflow-y:auto;overflow-x:hidden;padding-right:4px}
   .dlist::-webkit-scrollbar{width:8px}.dlist::-webkit-scrollbar-thumb{background:#232c3c;border-radius:8px}
   .drow{padding:9px 0;border-bottom:1px solid #1a2231}
   .drow:last-child{border-bottom:0}
-  .drow .dt{font-size:12.5px;color:var(--ink)}
-  .drow .dm{display:flex;gap:8px;align-items:center;margin-top:4px}
-  .did{font-size:10.5px;color:var(--faint);font-family:ui-monospace,Menlo,monospace}
+  .drow .dt{font-size:12.5px;color:var(--ink);overflow-wrap:anywhere}
+  .drow .dm{display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap}
+  .did{font-size:10.5px;color:var(--faint);font-family:ui-monospace,Menlo,monospace;overflow-wrap:anywhere;min-width:0}
 
   .foot{margin-top:26px;color:var(--faint);font-size:11.5px;text-align:center;line-height:1.7}
   .legend{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:8px}
