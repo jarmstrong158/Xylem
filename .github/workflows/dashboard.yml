@@ -1,0 +1,64 @@
+name: Refresh dashboard
+
+# Regenerate docs/dashboard.html from live org data and commit it, so the
+# GitHub Pages dashboard stays current without anyone running the generator by
+# hand. Uses the REMOTE route: the connector URLs come from repo Actions secrets
+# (the token stays a secret — it is never committed and never written into the
+# HTML, only counts/summaries are).
+#
+# Setup (one time): add two repository secrets under
+#   Settings -> Secrets and variables -> Actions -> New repository secret
+#     CONTEXT_KEEPER_REMOTE_URL = https://context-keeper-remote.<subdomain>.workers.dev/mcp/<token>
+#     AGENTSYNC_REMOTE_URL      = https://<agentsync-worker>.<subdomain>.workers.dev/mcp/<token>
+# Until they are set, the job runs but skips (no failure).
+
+on:
+  schedule:
+    - cron: "17 7 * * *" # daily ~07:17 UTC
+  workflow_dispatch: {} # run on demand from the Actions tab
+
+permissions:
+  contents: write # commit the regenerated dashboard back to the branch
+
+concurrency:
+  group: dashboard-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate dashboard from live org data
+        id: gen
+        env:
+          CONTEXT_KEEPER_REMOTE_URL: ${{ secrets.CONTEXT_KEEPER_REMOTE_URL }}
+          AGENTSYNC_REMOTE_URL: ${{ secrets.AGENTSYNC_REMOTE_URL }}
+        run: |
+          if [ -z "$CONTEXT_KEEPER_REMOTE_URL" ] && [ -z "$AGENTSYNC_REMOTE_URL" ]; then
+            echo "::notice::No dashboard secrets set (CONTEXT_KEEPER_REMOTE_URL / AGENTSYNC_REMOTE_URL). Skipping — add them in Settings -> Secrets -> Actions."
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # The generator exits non-zero if the remote route collects nothing
+          # (Workers unreachable), which fails this step and leaves the committed
+          # dashboard untouched — never overwritten with an empty one.
+          python3 install/xylem_dashboard.py --remote --output docs/dashboard.html
+
+      - name: Commit if the dashboard changed
+        if: steps.gen.outputs.skip != '1'
+        run: |
+          if git diff --quiet -- docs/dashboard.html; then
+            echo "Dashboard unchanged — nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/dashboard.html
+          git commit -m "Auto-refresh observability dashboard from live org data"
+          git push
