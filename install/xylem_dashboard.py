@@ -36,11 +36,21 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+# Substring markers of throwaway/test projects that get written to the store
+# during development (e.g. "ck-schema-budget-smoketest", "e2e-live-upsert-check",
+# "enc_check"). They pollute the org view; drop them. Extend via the
+# XYLEM_DASHBOARD_EXCLUDE config key (list or comma-separated).
+_DEFAULT_EXCLUDE = (
+    "smoketest", "e2e-live", "upsert-check", "enc_check",
+    "ck_live_src", "ck-schema", ".github.io",
+)
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_TEMPLATE = HERE.parent / "docs" / "dashboard.template.html"
@@ -215,13 +225,13 @@ def read_board_local(repo, branch, known):
     return events, None
 
 
-def read_context_local(project_paths):
+def read_context_local(project_paths, exclude=()):
     """Read every project clone's .context/ store into (stores, recent decisions)."""
     stores, decisions = [], []
     for path in project_paths:
         base = Path(path)
         ctx = base / ".context"
-        if not ctx.is_dir():
+        if not ctx.is_dir() or excluded_project(base.name, exclude):
             continue
         decs = read_json_list(ctx / "decisions.json")
         cons = read_json_list(ctx / "constraints.json")
@@ -307,11 +317,18 @@ def rpc_call_tool(url, name, arguments):
     return result.get("structuredContent") or {}
 
 
-def read_context_remote(url):
+def excluded_project(name, exclude):
+    n = str(name).lower()
+    return any(p in n for p in exclude)
+
+
+def read_context_remote(url, exclude=()):
     reg = rpc_call_tool(url, "list_projects", {})
     stores, decisions = [], []
     for p in reg.get("projects", []):
         name = p.get("project", "?")
+        if excluded_project(name, exclude):
+            continue
         stores.append({"p": name, "dec": p.get("decisions", 0),
                        "con": p.get("constraints", 0), "cls": name})
         try:
@@ -325,27 +342,67 @@ def read_context_remote(url):
     return stores, decisions
 
 
+# agentsync history commit messages look like:
+#   "agentsync: <agent> claims '<task>'"  /  "agentsync: <agent> releases '<task>'"
+# (task may contain apostrophes, so anchor the closing quote to end-of-string).
+_HIST_RE = re.compile(r"^agentsync:\s+(\S+)\s+(claims|releases)\s+'(.*)'\s*$")
+
+
 def read_board_remote(url, known):
+    # Current claims from survey (rich: status/note/branch per active claim).
+    current = {}
+    try:
+        surv = rpc_call_tool(url, "survey", {})
+        for agent, c in (surv.get("claims") or {}).items():
+            if isinstance(c, dict) and c.get("task"):
+                current[(agent, c["task"])] = c
+    except Exception as exc:
+        warn("agentsync-remote survey failed (%s)" % exc)
+
+    # Full timeline from the history commit log ({commits:[{message,date,...}]}).
+    agg = {}
+    try:
+        hist = rpc_call_tool(url, "history", {"limit": 100})
+        for cm in hist.get("commits", []):
+            m = _HIST_RE.match(cm.get("message", ""))
+            if not m:
+                continue
+            agent, action, task = m.group(1), m.group(2), m.group(3)
+            date = cm.get("date", "") or ""
+            rec = agg.setdefault((agent, task),
+                                 {"first": date, "last": date, "released": False})
+            if date > rec["last"]:
+                rec["last"] = date
+            if date and date < rec["first"]:
+                rec["first"] = date
+            if action == "releases":
+                rec["released"] = True
+    except Exception as exc:
+        warn("agentsync-remote history failed (%s)" % exc)
+
+    # Fall back to survey's current claims if history gave nothing.
+    if not agg:
+        for (agent, task), c in current.items():
+            agg[(agent, task)] = {"first": c.get("updated_at", ""),
+                                  "last": c.get("updated_at", ""),
+                                  "released": c.get("status") in ("done", "released")}
+
     events = []
-    board = {}
-    for method, args in (("history", {}), ("survey", {})):
-        try:
-            board = rpc_call_tool(url, method, args)
-            if board:
-                break
-        except Exception:
-            continue
-    claims = board.get("claims", board.get("history", {}))
-    items = claims.items() if isinstance(claims, dict) else enumerate(claims)
-    for agent, c in items:
-        if not isinstance(c, dict) or not c.get("task"):
-            continue
-        who = c.get("agent_id") or (agent if isinstance(agent, str) else str(agent))
-        status = "done" if c.get("status") in ("done", "released") else "live"
-        events.append({"t": c.get("task", ""),
-                       "repo": attribute_repo(c.get("task"), c.get("branch"), known),
-                       "who": who, "when": mmdd_from_iso(c.get("updated_at")),
-                       "status": status, "desc": (c.get("note") or "")[:150]})
+    for (agent, task), rec in agg.items():
+        cur = current.get((agent, task))
+        live = cur is not None and cur.get("status") not in ("done", "released")
+        events.append({
+            "t": task,
+            "repo": attribute_repo(task, (cur or {}).get("branch"), known),
+            "who": agent,
+            "when": mmdd_from_iso(rec["last"]),
+            "status": "live" if live else "done",
+            "desc": ((cur or {}).get("note") or "")[:150],
+            "_sort": rec["last"] or "",
+        })
+    events.sort(key=lambda e: e["_sort"], reverse=True)
+    for e in events:
+        e.pop("_sort", None)
     return events, None
 
 
@@ -442,11 +499,18 @@ def main(argv=None):
     known_repos = set(STACK_REPOS)
     coord_repo = None
 
+    exclude = list(_DEFAULT_EXCLUDE)
+    extra_excl = cfg_get(cfg, "XYLEM_DASHBOARD_EXCLUDE")
+    if extra_excl:
+        parts = extra_excl if isinstance(extra_excl, list) else str(extra_excl).split(",")
+        exclude += [x.strip().lower() for x in parts if x.strip()]
+    exclude = tuple(exclude)
+
     if route == "local":
         projects = discover_projects(cfg, args.projects)
         known_repos |= {Path(p).name for p in projects}
         info("context-keeper: %d project store(s)" % len(projects))
-        stores, decisions = read_context_local(projects)
+        stores, decisions = read_context_local(projects, exclude)
         repo = cfg_get(cfg, "AGENTSYNC_REPO")
         branch = cfg_get(cfg, "AGENTSYNC_BRANCH", "agentsync")
         events, _ = read_board_local(repo, branch, known_repos)
@@ -461,7 +525,7 @@ def main(argv=None):
         stores, decisions = ([], [])
         if ck_url:
             try:
-                stores, decisions = read_context_remote(ck_url)
+                stores, decisions = read_context_remote(ck_url, exclude)
             except Exception as exc:
                 warn("context-keeper-remote unreachable (%s)" % exc)
         known_repos |= {s["p"] for s in stores}
