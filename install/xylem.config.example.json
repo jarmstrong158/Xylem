@@ -23,6 +23,10 @@
   "CONTEXT_KEEPER_REMOTE_URL": "https://context-keeper-remote.<your-subdomain>.workers.dev/mcp/<your-token>",
   "AGENTSYNC_REMOTE_URL": "https://<your-worker>.<your-subdomain>.workers.dev/mcp/<your-token>",
 
+  "_dashboard": "For the observability dashboard (install/xylem_dashboard.py). LOCAL route (default, no token): it reads the agentsync branch of AGENTSYNC_REPO and scans each project's .context/ store. It already knows CONTEXT_KEEPER_PROJECT/CAMBIUM_REPO/AGENTSYNC_REPO; list ANY additional project clones here (or point XYLEM_PROJECTS_ROOT at a folder of clones and it scans for .context/ dirs). REMOTE route (--remote): uses the two *_REMOTE_URL values above; the token never leaves this file.",
+  "XYLEM_DASHBOARD_PROJECTS": ["/abs/path/to/another/project/clone"],
+  "XYLEM_PROJECTS_ROOT": "",
+
   "_optional": "Uncomment / set any of these to override defaults. XYLEM_PYTHON forces a specific interpreter for the stdio servers (e.g. a venv); otherwise python3/python on PATH is used.",
   "XYLEM_PYTHON": ""
 }
