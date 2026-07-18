@@ -16,26 +16,9 @@ The tools are only half of it. A tool an agent *can* call but usually *doesn't* 
 
 > In a tree, *xylem* is the transport tissue that moves water and nutrients between layers; *cambium* is the growth layer that turns them into new wood. The names are deliberate — this repo is the transport tissue that moves you to the right tool.
 
-## The habit layer
+## Install
 
-> **One install: agents remember, coordinate, and ask by default.**
-
-Wiring an MCP server into a config file makes a capability *available*. It does not make an agent *use* it. An agent with a memory tool it never calls still loses the *why* behind last week's decision; two agents with a coordination tool they ignore still clobber each other. The gap between "installed" and "habitual" is where the value leaks out.
-
-The habit layer closes that gap. Alongside registering the servers, the installer injects a fenced discipline block into your Claude Code `CLAUDE.md` and installs a `/xylem-discipline` slash command, so the behavior is part of the agent's standing instructions rather than something you have to remember to prompt for. The block is short and load-bearing:
-
-- **Remember** — at session start a context-keeper project summary is injected via hook; active constraints are treated as binding, and settled decisions are not silently re-litigated.
-- **Recall & compound** — before starting work, `recall()` what the team already learned from cambium (past outcomes, gotchas, decisions); as work completes, a `SessionEnd` hook `distill()`s finished agentsync claims and context-keeper decisions into cambium automatically, so knowledge compounds instead of evaporating.
-- **Coordinate** — before multi-file or long-running work, survey the agentsync board and claim what you'll touch; never force over an active peer's claim without asking.
-- **Ask by default** — on any judgment call with more than one defensible answer, post to the agentsync mailbox (which reaches your phone) and carry on with non-dependent work rather than guessing or blocking.
-- **Record as you go** — architectural decisions land in context-keeper *at the moment they're made*, with rationale, not batched at the end.
-- **Close cleanly** — before ending, record new decisions and release claims with a note stating the outcome and the next action. For a build session, "done" means *pushed to origin*, not merely committed.
-
-Everything the installer writes lives between `<!-- XYLEM:BEGIN vN -->` / `<!-- XYLEM:END -->` fences, so it owns exactly that block and nothing else — your own `CLAUDE.md` content is never touched. Run `/xylem-discipline "<the pre-approved task>"` at the top of a session to load the full survey → claim → record → release workflow.
-
-## Quickstart
-
-Zero-dependency, stdlib-Python-3 installer. From a clone of this repo, with the sibling server repos (`context-keeper`, `agentsync`, `cambium`) checked out alongside it:
+**One install — the habit layer.** Zero-dependency, stdlib-Python-3. From a clone of this repo, with the sibling server repos (`context-keeper`, `agentsync`, `cambium`) checked out alongside it:
 
 ```sh
 ./install.sh --dry-run        # show exact diffs, write nothing (Windows: .\install.ps1 --dry-run)
@@ -52,6 +35,32 @@ That single run:
 It's additive (never clobbers a foreign server or your prose), backs up every file before its first write as `*.xylem-backup`, and is idempotent — a second run computes identical bytes and writes nothing. Remote Worker URLs and tokens are read at install time from the environment, never committed. Target a single project's `CLAUDE.md` instead of the global one with `--project PATH`.
 
 Prefer to wire the raw servers into a *different* editor — Cursor, Windsurf, VS Code, Claude Desktop, Zed, GitHub Copilot CLI? That's the multi-agent suite installer under [install/](install/README.md); it registers the servers across all of them but does not carry the Claude Code habit block.
+
+**Or install as a Claude Code plugin.** From inside Claude Code — no clone required:
+
+```text
+/plugin marketplace add jarmstrong158/xylem
+/plugin install xylem@xylem-stack
+```
+
+This adds the memory + coordination MCP servers, seven skills (recall, claim, record, distill, promote, …), and the `SessionStart` / `SessionEnd` hooks. Set the four env vars for the remote servers (`CONTEXT_KEEPER_REMOTE_URL` / `CONTEXT_KEEPER_REMOTE_TOKEN` / `AGENTSYNC_REMOTE_URL` / `AGENTSYNC_REMOTE_TOKEN`); cambium is optional and only the knowledge skills need it. Full details in [plugin/README.md](plugin/README.md).
+
+## The habit layer
+
+> **One install: agents remember, coordinate, and ask by default.**
+
+Wiring an MCP server into a config file makes a capability *available*. It does not make an agent *use* it. An agent with a memory tool it never calls still loses the *why* behind last week's decision; two agents with a coordination tool they ignore still clobber each other. The gap between "installed" and "habitual" is where the value leaks out.
+
+The habit layer closes that gap. Alongside registering the servers, the installer injects a fenced discipline block into your Claude Code `CLAUDE.md` and installs a `/xylem-discipline` slash command, so the behavior is part of the agent's standing instructions rather than something you have to remember to prompt for. The block is short and load-bearing:
+
+- **Remember** — at session start a context-keeper project summary is injected via hook; active constraints are treated as binding, and settled decisions are not silently re-litigated.
+- **Recall & compound** — before starting work, `recall()` what the team already learned from cambium (past outcomes, gotchas, decisions); as work completes, a `SessionEnd` hook `distill()`s finished agentsync claims and context-keeper decisions into cambium automatically, so knowledge compounds instead of evaporating.
+- **Coordinate** — before multi-file or long-running work, survey the agentsync board and claim what you'll touch; never force over an active peer's claim without asking.
+- **Ask by default** — on any judgment call with more than one defensible answer, post to the agentsync mailbox (which reaches your phone) and carry on with non-dependent work rather than guessing or blocking.
+- **Record as you go** — architectural decisions land in context-keeper *at the moment they're made*, with rationale, not batched at the end.
+- **Close cleanly** — before ending, record new decisions and release claims with a note stating the outcome and the next action. For a build session, "done" means *pushed to origin*, not merely committed.
+
+Everything the installer writes lives between `<!-- XYLEM:BEGIN vN -->` / `<!-- XYLEM:END -->` fences, so it owns exactly that block and nothing else — your own `CLAUDE.md` content is never touched. Run `/xylem-discipline "<the pre-approved task>"` at the top of a session to load the full survey → claim → record → release workflow.
 
 ## Version signals
 
