@@ -130,7 +130,7 @@
       "event_type": "decision",
       "storyline": "parallel-two-agent",
       "summary": "Recorded cambium dec-001: first real end-to-end knowledge cycle on balatron history (distill 80 items -> recall -> promote 22 to team -> endorse -> org PRs #1/#2 -> cross-project recall from the Clark project); federation validated",
-      "provenance": "https://github.com/jarmstrong158/knowledge/pull/2"
+      "provenance": "https://github.com/jarmstrong158/cambium"
     },
     {
       "timestamp": "2026-07-10T17:23:02Z",
@@ -234,7 +234,7 @@
       "event_type": "release",
       "storyline": "connector-outage",
       "summary": "Released 'cambium: live KNOWLEDGE.md export' — all 9 org items present and clean (the mojibake fix's first field test passed), pushed to the knowledge repo; the proxy-covered handoff is fully resolved",
-      "provenance": "https://github.com/jarmstrong158/knowledge/blob/main/KNOWLEDGE.md"
+      "provenance": "https://github.com/jarmstrong158/cambium"
     }
   ]
 }

@@ -29,6 +29,11 @@
     --accent:#0f9d58;
     --accent-ink:#0a6e3d;
     --accent-wash:#e6f6ee;
+    /* Button fill/text pair — chosen so body text on the fill clears WCAG AA 4.5:1.
+       Light: #fff on #0a6e3d = 6.34:1 */
+    --btn-bg:#0a6e3d;
+    --btn-fg:#ffffff;
+    --focus:#0a6e3d;
     --shadow:0 1px 2px rgba(14,22,19,.06),0 8px 24px rgba(14,22,19,.06);
     --radius:16px;
     --maxw:920px;
@@ -44,6 +49,10 @@
       --accent:#33c982;
       --accent-ink:#7fe3b0;
       --accent-wash:#12201a;
+      /* Dark: dark ink ON the green rather than white — #07160f on #33c982 = 8.68:1 */
+      --btn-bg:#33c982;
+      --btn-fg:#07160f;
+      --focus:#7fe3b0;
       --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);
     }
   }
@@ -80,10 +89,29 @@
   .cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:26px}
   .btn{
     display:inline-block;padding:12px 20px;border-radius:999px;font-weight:700;
-    background:var(--accent);color:#fff;border:1px solid transparent;
+    background:var(--btn-bg);color:var(--btn-fg);border:1px solid transparent;
   }
   .btn:hover{text-decoration:none;filter:brightness(1.05)}
   .btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+
+  /* ---- Keyboard focus: one clear, high-contrast ring everywhere ---- */
+  :focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:4px}
+  a:focus-visible,.btn:focus-visible,button:focus-visible,.ctrl:focus-visible,.dot:focus-visible,.flink:focus-visible{
+    outline:3px solid var(--focus);outline-offset:3px;
+  }
+  /* the green-filled CTA needs a ring that reads against the fill too */
+  .btn:focus-visible{box-shadow:0 0 0 2px var(--bg)}
+  .dot:focus-visible{outline-offset:4px}
+  /* skip-link target is a landmark, not a control — no ring needed */
+  main:focus,main:focus-visible{outline:none}
+
+  /* ---- Skip link: hidden until focused ---- */
+  .skip{
+    position:absolute;left:-9999px;top:0;z-index:100;
+    background:var(--btn-bg);color:var(--btn-fg);font-weight:700;
+    padding:12px 18px;border-radius:0 0 12px 0;
+  }
+  .skip:focus{left:0;text-decoration:none}
 
   /* one-install command block */
   .install{
@@ -97,6 +125,13 @@
   @media (prefers-color-scheme: dark){.install .cmd{background:#05100b;border:1px solid var(--line)}}
   .install .os{font:.82rem/1.4 ui-monospace,Menlo,monospace;color:var(--ink-soft);margin-left:10px}
   .install .what{display:block;margin:11px 0 0;font-size:.9rem;color:var(--ink-soft)}
+  .install .opt+.opt{margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}
+  .install .lbl{
+    display:block;font-size:.72rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    color:var(--accent-ink);margin-bottom:8px;
+  }
+  .install .cmd.blk{display:block;width:fit-content;max-width:100%;overflow-wrap:anywhere}
+  .install .cmd.blk+.cmd.blk{margin-top:6px}
 
   /* ---- a week of real use ---- */
   .uselist{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:14px}
@@ -184,15 +219,6 @@
     border-radius:12px;padding:16px 18px;font-size:1.02rem;
   }
   .keynote b{color:var(--accent-ink)}
-
-  /* recorded-walkthrough note (replace with a real embed when one exists) */
-  .video-slot{
-    margin-top:18px;border:1px dashed color-mix(in srgb,var(--accent) 35%,var(--line));border-radius:12px;
-    background:var(--surface-2);display:flex;align-items:center;gap:12px;
-    color:var(--ink-soft);padding:14px 16px;font-size:.95rem;
-  }
-  .video-slot .play-ic{font-size:1.3rem;color:var(--accent-ink);flex:0 0 auto}
-  .video-slot b{color:var(--ink)}
 
   /* ---- cards ---- */
   .cards{display:grid;grid-template-columns:1fr;gap:16px}
@@ -302,6 +328,8 @@
 </head>
 <body>
 
+<a class="skip" href="#main">Skip to content</a>
+
 <!-- ============ HERO ============ -->
 <header class="hero wrap">
   <div class="leaf" aria-hidden="true">🌿</div>
@@ -309,8 +337,16 @@
   <p class="lede">Not tools an agent <em>can</em> call and usually doesn't. One install writes the habit in, so my agents remember decisions, coordinate without clobbering each other, and <span class="hl">ask me on my phone</span> while I'm on the couch.</p>
   <p class="sub">Xylem is a small stack of tools that gives AI coding assistants three human things — a memory, a shared job site, and a way to reach me when they're stuck — plus the one piece that makes them actually get used: an installer that writes the discipline into the agent's own instructions.</p>
   <div class="install">
-    <code class="cmd">./install.sh</code><span class="os">Windows: .\install.ps1</span>
-    <span class="what">Registers the servers, injects a fenced discipline block into your <code>CLAUDE.md</code>, and adds the <code>/xylem-discipline</code> command — so "installed" means "used," not "available and ignored."</span>
+    <div class="opt">
+      <span class="lbl">Install as a plugin</span>
+      <code class="cmd blk">/plugin marketplace add jarmstrong158/Xylem</code>
+      <code class="cmd blk">/plugin install xylem@xylem-stack</code>
+    </div>
+    <div class="opt">
+      <span class="lbl">Or clone and run the installer</span>
+      <code class="cmd">./install.sh --apply</code><span class="os">Windows: .\install.ps1 --apply</span>
+    </div>
+    <span class="what">Either path registers the servers, injects a fenced discipline block into your <code>CLAUDE.md</code>, and adds the <code>/xylem-discipline</code> command — so "installed" means "used," not "available and ignored."</span>
   </div>
   <div class="cta">
     <a class="btn" href="#flow">See how it works</a>
@@ -318,6 +354,8 @@
     <a class="btn ghost" href="https://github.com/jarmstrong158/Xylem">View on GitHub</a>
   </div>
 </header>
+
+<main id="main" tabindex="-1">
 
 <!-- ============ ANIMATED FLOW ============ -->
 <section id="flow">
@@ -359,21 +397,9 @@
         <button class="ctrl" id="prev" aria-label="Previous step">‹</button>
         <button class="ctrl play" id="play" aria-label="Play or pause">▶ Play</button>
         <button class="ctrl" id="next" aria-label="Next step">›</button>
-        <div class="dots" id="dots" role="tablist" aria-label="Steps"></div>
+        <div class="dots" id="dots" role="group" aria-label="Steps"></div>
       </div>
     </div>
-
-    <div class="video-slot" id="video-slot">
-      <span class="play-ic" aria-hidden="true">🎬</span>
-      <span><b>A recorded walkthrough is coming.</b> For now, the step-through above is the live demo.</span>
-    </div>
-    <!--
-      TODO: when a screen recording exists, replace the .video-slot block above with a real embed, e.g.
-      <div style="aspect-ratio:16/9;margin-top:18px">
-        <iframe src="https://www.youtube.com/embed/VIDEO_ID" title="Xylem demo"
-                style="width:100%;height:100%;border:0;border-radius:16px" allowfullscreen></iframe>
-      </div>
-    -->
   </div>
 </section>
 
@@ -433,8 +459,8 @@
       </li>
       <li>
         <b>A knowledge harvest: 132 distilled lessons → 9 org items.</b>
-        <div class="body">A week of session-level lessons was distilled and boiled down to 9 organization-level knowledge items — each one landed through its own reviewed pull request, not a bulk dump.</div>
-        <span class="links"><a href="https://github.com/jarmstrong158/knowledge/blob/main/KNOWLEDGE.md">the promoted org knowledge</a></span>
+        <div class="body">A week of session-level lessons was distilled and boiled down to 9 organization-level knowledge items — each one landed through its own reviewed pull request, not a bulk dump. <em>The org knowledge store itself is a private repo, so unlike the other items on this list you can't open it; what you can read is the promotion machinery that gated it.</em></div>
+        <span class="links"><a href="https://github.com/jarmstrong158/cambium">cambium's promotion gates</a></span>
       </li>
       <li>
         <b>A connector outage where the discipline held.</b>
@@ -476,13 +502,15 @@
      Values baked in at build time from:
        https://raw.githubusercontent.com/jarmstrong158/context-keeper/main/docs/METRICS.md
        https://raw.githubusercontent.com/jarmstrong158/agentsync-remote/main/docs/RELIABILITY.md
-     Fetched 2026-07-08. Update by re-reading those files and editing the values below.
+     Hand-copied point-in-time snapshot, last read 2026-07-08. These do NOT auto-refresh —
+     the live dashboard (dashboard.html) does. Update by re-reading those files and editing
+     the values below, and move the snapshot date in the visible label to match.
 ====================================================================================== -->
 <section id="numbers">
   <div class="wrap">
     <div class="eyebrow">Measured, with the caveats kept</div>
     <h2>The numbers</h2>
-    <p class="muted">Real figures from the projects' own test reports — honest labels, limits included.</p>
+    <p class="muted">Real figures from the projects' own test reports — honest labels, limits included. These are a hand-copied snapshot, read on <b>8 July 2026</b>, not a live feed; for numbers that refresh on their own, see the <a href="dashboard.html">live dashboard</a>.</p>
 
     <div class="num-group">
       <h3>Memory, measured</h3>
@@ -550,6 +578,8 @@
   </div>
 </section>
 
+</main>
+
 <!-- ============ FOOTER ============ -->
 <footer>
   <div class="wrap">
@@ -558,12 +588,12 @@
       <h2>Explore the stack</h2>
     </section>
     <div class="flinks">
-      <a class="flink" href="https://github.com/jarmstrong158/Xylem"><span class="ic">🌳</span><span><span class="nm">xylem</span><br><span class="d">the hub — start here</span></span></a>
-      <a class="flink" href="https://github.com/jarmstrong158/context-keeper"><span class="ic">📚</span><span><span class="nm">context-keeper</span><br><span class="d">rationale-first project memory (local)</span></span></a>
-      <a class="flink" href="https://github.com/jarmstrong158/context-keeper-remote"><span class="ic">☁️</span><span><span class="nm">context-keeper-remote</span><br><span class="d">the same memory, from your phone</span></span></a>
-      <a class="flink" href="https://github.com/jarmstrong158/agentsync"><span class="ic">🪧</span><span><span class="nm">agentsync</span><br><span class="d">no-server multi-agent coordination (local)</span></span></a>
-      <a class="flink" href="https://github.com/jarmstrong158/agentsync-remote"><span class="ic">📡</span><span><span class="nm">agentsync-remote</span><br><span class="d">join the mesh from your phone</span></span></a>
-      <a class="flink" href="https://github.com/jarmstrong158/cambium"><span class="ic">🌱</span><span><span class="nm">cambium</span><br><span class="d">trust-gated knowledge promotion</span></span></a>
+      <a class="flink" href="https://github.com/jarmstrong158/Xylem"><span class="ic" aria-hidden="true">🌳</span><span><span class="nm">xylem</span><br><span class="d">the hub — start here</span></span></a>
+      <a class="flink" href="https://github.com/jarmstrong158/context-keeper"><span class="ic" aria-hidden="true">📚</span><span><span class="nm">context-keeper</span><br><span class="d">rationale-first project memory (local)</span></span></a>
+      <a class="flink" href="https://github.com/jarmstrong158/context-keeper-remote"><span class="ic" aria-hidden="true">☁️</span><span><span class="nm">context-keeper-remote</span><br><span class="d">the same memory, from your phone</span></span></a>
+      <a class="flink" href="https://github.com/jarmstrong158/agentsync"><span class="ic" aria-hidden="true">🪧</span><span><span class="nm">agentsync</span><br><span class="d">no-server multi-agent coordination (local)</span></span></a>
+      <a class="flink" href="https://github.com/jarmstrong158/agentsync-remote"><span class="ic" aria-hidden="true">📡</span><span><span class="nm">agentsync-remote</span><br><span class="d">join the mesh from your phone</span></span></a>
+      <a class="flink" href="https://github.com/jarmstrong158/cambium"><span class="ic" aria-hidden="true">🌱</span><span><span class="nm">cambium</span><br><span class="d">trust-gated knowledge promotion</span></span></a>
     </div>
     <p class="fnote">Built by <a href="https://github.com/jarmstrong158">@jarmstrong158</a>. Local-first MCP servers with remote transports — your phone as a full peer in your agent mesh.</p>
   </div>
@@ -594,8 +624,9 @@
   // build dots
   steps.forEach(function(_,i){
     var b=document.createElement("button");
+    b.type="button";
     b.className="dot"+(i===0?" on":"");
-    b.setAttribute("role","tab");
+    if(i===0) b.setAttribute("aria-current","true");
     b.setAttribute("aria-label","Step "+(i+1));
     b.addEventListener("click",function(){stop();go(i);});
     dotsWrap.appendChild(b);
@@ -629,7 +660,10 @@
     for(var k in nodes){ nodes[k].classList.toggle("lit", st.lit.indexOf(k)>=0); }
     rows.forEach(function(r,ri){ r.classList.toggle("on", ri<st.rows); });
     caption.innerHTML='<span class="step-no">'+(idx+1)+'.</span>'+st.cap;
-    dots.forEach(function(d,di){ d.classList.toggle("on", di===idx); });
+    dots.forEach(function(d,di){
+      d.classList.toggle("on", di===idx);
+      if(di===idx){ d.setAttribute("aria-current","true"); } else { d.removeAttribute("aria-current"); }
+    });
     movePacket(st.from, st.to);
   }
 

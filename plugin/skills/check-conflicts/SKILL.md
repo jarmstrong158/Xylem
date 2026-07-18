@@ -1,6 +1,6 @@
 ---
 name: check-conflicts
-description: "used for 'who's working on what', 'any conflicts', 'show the board'. Read-only: survey the agentsync board, check_conflicts on named paths, read the mailbox; report active peers, overlaps, and pending notes. A done claim never blocks."
+description: "READ-ONLY board inspection; it does NOT claim or release — use claim-work to start or finish work. Used for 'who's working on what', 'any conflicts', 'show the board', 'is anyone on this file'. Surveys the agentsync board, runs check_conflicts on named paths, reads the mailbox; reports active peers, overlaps, and pending notes. A done claim never blocks."
 metadata:
   version: "0.1.0"
 ---

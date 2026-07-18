@@ -1,5 +1,12 @@
-# Xylem backups written by installer
+# Xylem backups written by the installers.
+# *.xylem-backup  -> root installer.py (pristine, first write)
+# *.xylem-backup.<epoch> -> root installer.py (preserved hand edit)
+# *.bak-<timestamp>      -> install/xylem_install.py (per-apply)
+# These normally live under $HOME, but a --project install drops one inside the
+# user's own repo, where their .gitignore won't have the pattern.
 *.xylem-backup
+*.xylem-backup.*
+*.bak-[0-9]*
 
 # Local untracked config (never commit URLs or secrets)
 # The installer reads xylem.config.json and the example tells users to put their

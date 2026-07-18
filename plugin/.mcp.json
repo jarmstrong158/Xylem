@@ -1,6 +1,13 @@
 {
+  "$comment": "GENERATED FILE -- do not edit by hand. Source: manifest.json. Regenerate: python scripts/render_discipline.py --write",
   "mcpServers": {
-    "context-keeper-remote": { "type": "http", "url": "${CONTEXT_KEEPER_REMOTE_URL}", "headers": { "Authorization": "Bearer ${CONTEXT_KEEPER_REMOTE_TOKEN}" } },
-    "agent-sync-remote":     { "type": "http", "url": "${AGENTSYNC_REMOTE_URL}",       "headers": { "Authorization": "Bearer ${AGENTSYNC_REMOTE_TOKEN}" } }
+    "agentsync-remote": {
+      "type": "http",
+      "url": "${AGENTSYNC_REMOTE_URL}"
+    },
+    "context-keeper-remote": {
+      "type": "http",
+      "url": "${CONTEXT_KEEPER_REMOTE_URL}"
+    }
   }
 }

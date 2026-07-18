@@ -1,22 +1,20 @@
 {
   "name": "xylem-stack",
-  "owner": { "name": "Jonny Armstrong", "email": "jarmstrong158@gmail.com" },
+  "owner": { "name": "Jonathan Armstrong", "email": "jarmstrong158@gmail.com" },
   "description": "The Xylem stack: give your AI sessions a memory that persists, coordination across agents, and a loop that compounds what they learn.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "plugins": [
     {
       "name": "xylem",
       "source": "./plugin",
-      "displayName": "Xylem",
       "description": "Agents that remember, coordinate, and compound. Persistent decision memory and a multi-agent claim/release board, plus knowledge distillation and session hooks that make the discipline automatic.",
       "version": "0.2.0",
-      "author": { "name": "Jonny Armstrong", "email": "jarmstrong158@gmail.com" },
-      "homepage": "https://github.com/jarmstrong158/xylem",
-      "repository": "https://github.com/jarmstrong158/xylem",
+      "author": { "name": "Jonathan Armstrong", "email": "jarmstrong158@gmail.com" },
+      "homepage": "https://github.com/jarmstrong158/Xylem",
+      "repository": "https://github.com/jarmstrong158/Xylem",
       "license": "MIT",
       "category": "developer-tools",
-      "keywords": ["memory","coordination","multi-agent","decisions","knowledge","distillation","context","mcp"],
-      "tags": ["memory","coordination","knowledge-management","agents"]
+      "keywords": ["memory","coordination","multi-agent","decisions","knowledge","distillation","context","mcp"]
     }
   ]
 }

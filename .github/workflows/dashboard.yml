@@ -40,21 +40,52 @@ jobs:
           CONTEXT_KEEPER_REMOTE_URL: ${{ secrets.CONTEXT_KEEPER_REMOTE_URL }}
           AGENTSYNC_REMOTE_URL: ${{ secrets.AGENTSYNC_REMOTE_URL }}
         run: |
-          if [ -z "$CONTEXT_KEEPER_REMOTE_URL" ] && [ -z "$AGENTSYNC_REMOTE_URL" ]; then
-            echo "::notice::No dashboard secrets set (CONTEXT_KEEPER_REMOTE_URL / AGENTSYNC_REMOTE_URL). Skipping — add them in Settings -> Secrets -> Actions."
+          # Require BOTH secrets. With only one set the generator still runs and
+          # publishes a half-empty dashboard (e.g. decisions but zero coordination
+          # events), which looks like data loss rather than a config gap.
+          if [ -z "$CONTEXT_KEEPER_REMOTE_URL" ] || [ -z "$AGENTSYNC_REMOTE_URL" ]; then
+            echo "::notice::Dashboard secrets incomplete (need both CONTEXT_KEEPER_REMOTE_URL and AGENTSYNC_REMOTE_URL). Skipping — add them in Settings -> Secrets -> Actions."
             echo "skip=1" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          # The generator exits non-zero if the remote route collects nothing
-          # (Workers unreachable), which fails this step and leaves the committed
-          # dashboard untouched — never overwritten with an empty one.
-          python3 install/xylem_dashboard.py --remote --output docs/dashboard.html
+          # The generator exits non-zero if the route collects nothing (Workers
+          # unreachable), which fails this step and leaves the committed dashboard
+          # untouched — never overwritten with an empty one.
+          # --no-notes: this dashboard is published to GitHub Pages, so claim notes
+          # (free text, verbatim) must not be baked into a public page.
+          python3 install/xylem_dashboard.py --remote --no-notes --output docs/dashboard.html
 
       - name: Commit if the dashboard changed
         if: steps.gen.outputs.skip != '1'
         run: |
-          if git diff --quiet -- docs/dashboard.html; then
-            echo "Dashboard unchanged — nothing to commit."
+          # The embedded payload carries a `generated_at` date stamp, so the raw
+          # file differs every single day even when nothing at all happened —
+          # `git diff --quiet` was never true and this job committed daily forever.
+          # Compare the payload with generated_at stripped, and if only the stamp
+          # moved, restore the committed file and stop.
+          extract() {
+            python3 - "$1" <<'PY'
+          import json, re, sys
+          try:
+              html = open(sys.argv[1], encoding="utf-8").read()
+          except OSError:
+              print("__MISSING__"); raise SystemExit
+          m = re.search(r'<script id="xylem-data"[^>]*>(.*?)</script>', html, re.S)
+          if not m:
+              print("__NOPAYLOAD__"); raise SystemExit
+          try:
+              data = json.loads(m.group(1))
+          except ValueError:
+              print("__BADJSON__"); raise SystemExit
+          (data.get("meta") or {}).pop("generated_at", None)
+          # ensure_ascii keeps the comparison independent of the runner's locale
+          print(json.dumps(data, sort_keys=True, ensure_ascii=True))
+          PY
+          }
+          git show HEAD:docs/dashboard.html > /tmp/dashboard.prev.html 2>/dev/null || true
+          if [ "$(extract /tmp/dashboard.prev.html)" = "$(extract docs/dashboard.html)" ]; then
+            echo "Dashboard substance unchanged (only the generated_at stamp moved) — nothing to commit."
+            git checkout -- docs/dashboard.html || true
             exit 0
           fi
           git config user.name "github-actions[bot]"

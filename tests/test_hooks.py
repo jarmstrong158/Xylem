@@ -12,7 +12,8 @@ sys.path.insert(0, ROOT)
 from installer import (  # noqa: E402
     merge_hooks, remove_hooks, HOOK_MARKER, VERSION_CHECK_MARKER,
     DISTILL_HOOK_MARKER, build_settings_install, build_settings_uninstall,
-    CAMBIUM_ENV_KEY,
+    CAMBIUM_ENV_KEY, OWNER_KEY, HOOK_TIMEOUT, DISTILL_HOOK_TIMEOUT,
+    _is_xylem_hook_group, to_fwd,
 )
 
 COMMAND = '"python" "/x/artifacts/session_start_hook.py"'
@@ -104,6 +105,107 @@ class HooksTest(unittest.TestCase):
         merge_hooks(settings, COMMAND)
         remove_hooks(settings)
         self.assertNotIn("hooks", settings)
+
+
+class HookOwnershipTest(unittest.TestCase):
+    """Ownership is explicit. A foreign hook whose script merely shares our
+    (very generic) filename must never be touched, let alone deleted."""
+
+    FOREIGN = "python /opt/othertool/session_start_hook.py"
+
+    def _foreign_settings(self):
+        return {
+            "hooks": {
+                "SessionStart": [
+                    {"matcher": "",
+                     "hooks": [{"type": "command", "command": self.FOREIGN}]}
+                ]
+            }
+        }
+
+    def test_foreign_group_is_not_recognized_as_ours(self):
+        group = self._foreign_settings()["hooks"]["SessionStart"][0]
+        self.assertFalse(_is_xylem_hook_group(group, HOOK_MARKER))
+
+    def test_foreign_hook_survives_install(self):
+        settings = self._foreign_settings()
+        merge_hooks(settings, COMMAND)
+        commands = [h["command"] for g in settings["hooks"]["SessionStart"]
+                    for h in g["hooks"]]
+        self.assertIn(self.FOREIGN, commands)
+        self.assertIn(COMMAND, commands)
+
+    def test_foreign_hook_survives_uninstall(self):
+        settings = self._foreign_settings()
+        merge_hooks(settings, COMMAND)
+        remove_hooks(settings)
+        groups = settings["hooks"]["SessionStart"]
+        self.assertEqual(len(groups), 1)
+        self.assertEqual(groups[0]["hooks"][0]["command"], self.FOREIGN)
+        self.assertEqual(groups[0]["matcher"], "")
+
+    def test_uninstall_without_installing_leaves_foreign_hook(self):
+        settings = self._foreign_settings()
+        remove_hooks(settings)
+        self.assertIn("SessionStart", settings["hooks"])
+
+    def test_our_groups_carry_the_sentinel(self):
+        settings = {}
+        merge_hooks(settings, COMMAND)
+        self.assertIs(settings["hooks"]["SessionStart"][0][OWNER_KEY], True)
+
+    def test_legacy_group_under_xylem_root_is_still_ours(self):
+        # Written by an older version: no sentinel, but the script resolves
+        # under this checkout. It must still be recognized and cleaned up.
+        legacy_command = '"python" "%s"' % to_fwd(
+            os.path.join(ROOT, "artifacts", "session_start_hook.py"))
+        settings = {"hooks": {"SessionStart": [
+            {"hooks": [{"type": "command", "command": legacy_command}]}]}}
+        self.assertTrue(
+            _is_xylem_hook_group(settings["hooks"]["SessionStart"][0],
+                                 HOOK_MARKER))
+        remove_hooks(settings)
+        self.assertNotIn("hooks", settings)
+
+
+class HookShapeTest(unittest.TestCase):
+    """Registered hooks carry a timeout, and re-runs update in place."""
+
+    def test_hook_has_a_timeout(self):
+        settings = {}
+        merge_hooks(settings, COMMAND)
+        hook = settings["hooks"]["SessionStart"][0]["hooks"][0]
+        self.assertEqual(hook["timeout"], HOOK_TIMEOUT)
+
+    def test_distill_hook_has_the_longer_timeout(self):
+        settings = {}
+        merge_hooks(settings, DISTILL_COMMAND, marker=DISTILL_HOOK_MARKER,
+                    event="SessionEnd", timeout=DISTILL_HOOK_TIMEOUT)
+        hook = settings["hooks"]["SessionEnd"][0]["hooks"][0]
+        self.assertEqual(hook["timeout"], DISTILL_HOOK_TIMEOUT)
+
+    def test_rerun_preserves_user_added_matcher_and_position(self):
+        settings = {}
+        merge_hooks(settings, COMMAND)
+        merge_hooks(settings, VERSION_CHECK_COMMAND,
+                    marker=VERSION_CHECK_MARKER)
+        # The user hand-adds a matcher to our group and it must survive.
+        settings["hooks"]["SessionStart"][0]["matcher"] = "startup"
+        before = copy.deepcopy(settings)
+        merge_hooks(settings, COMMAND)
+        self.assertEqual(settings, before)
+
+    def test_changed_command_is_updated_in_place(self):
+        settings = {}
+        merge_hooks(settings, COMMAND)
+        merge_hooks(settings, VERSION_CHECK_COMMAND,
+                    marker=VERSION_CHECK_MARKER)
+        new_command = '"python3.12" "/x/artifacts/session_start_hook.py"'
+        merge_hooks(settings, new_command)
+        groups = settings["hooks"]["SessionStart"]
+        self.assertEqual(len(groups), 2)
+        # Still first in the list -- no churn from remove-then-append.
+        self.assertEqual(groups[0]["hooks"][0]["command"], new_command)
 
 
 class TwoHookTest(unittest.TestCase):

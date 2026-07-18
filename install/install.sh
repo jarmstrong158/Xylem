@@ -2,12 +2,18 @@
 # Thin bootstrap for macOS/Linux: find a Python 3 interpreter and hand off to the
 # installer. All real logic lives in xylem_install.py — keep this dumb.
 #
-#   ./install.sh                 # dry-run: show what would change
-#   ./install.sh install --apply  # write the changes
-#   ./install.sh uninstall        # dry-run removal
-#   ./install.sh list-agents      # what's detected here
+# THIS SCRIPT (install/install.sh) DRY-RUNS BY DEFAULT.
+# Nothing is written unless you pass --apply.
 #
-# With no arguments it defaults to a dry-run `install` so a curious run is safe.
+# WARNING: the repo-root ./install.sh is a DIFFERENT script with the OPPOSITE
+# default — it APPLIES immediately. Same filename, same repo. Check which path
+# you are actually invoking.
+#
+#   install/install.sh                  # DRY-RUN install: show what would change
+#   install/install.sh install --apply  # actually write the changes
+#   install/install.sh uninstall        # DRY-RUN removal
+#   install/install.sh uninstall --apply # actually remove
+#   install/install.sh list-agents      # what's detected here
 
 set -eu
 
@@ -28,6 +34,13 @@ if [ -z "$PY" ]; then
   echo "Install Python 3 (https://www.python.org/downloads/) and re-run." >&2
   exit 1
 fi
+
+# Loud, unmistakable mode banner — this script DRY-RUNS by default.
+MODE="DRY-RUN (no files written; add --apply to write)"
+for a in "$@"; do
+  if [ "$a" = "--apply" ]; then MODE="APPLY (files WILL be written)"; fi
+done
+echo "=== Xylem installer: $MODE ==="
 
 if [ "$#" -eq 0 ]; then
   exec "$PY" "$DIR/xylem_install.py" install

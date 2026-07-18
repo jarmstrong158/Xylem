@@ -1,6 +1,8 @@
 """Fence insert/replace/remove + round-trip idempotency. Stdlib unittest only."""
 import os
+import shutil
 import sys
+import tempfile
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -9,6 +11,7 @@ sys.path.insert(0, ROOT)
 from installer import (  # noqa: E402
     apply_fence,
     remove_fence,
+    detect_style,
     fence_begin,
     FENCE_BEGIN,
     FENCE_END,
@@ -100,6 +103,68 @@ class FenceTest(unittest.TestCase):
         removed = remove_fence(installed)
         self.assertNotIn("XYLEM:BEGIN", removed)
         self.assertIn("body", removed)
+
+
+class MultipleFenceGuardTest(unittest.TestCase):
+    """Every fence operation works on the FIRST block only. A duplicate block
+    would sit orphaned forever, so it must be reported loudly."""
+
+    TWO_BLOCKS = BLOCK + "\n\nnotes\n\n" + BLOCK
+
+    def test_apply_warns_on_two_blocks(self):
+        warnings = []
+        apply_fence(self.TWO_BLOCKS, BLOCK, warn=warnings.append)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("only the first block is managed", warnings[0])
+
+    def test_remove_warns_on_two_blocks(self):
+        warnings = []
+        remove_fence(self.TWO_BLOCKS, warn=warnings.append)
+        self.assertEqual(len(warnings), 1)
+
+    def test_single_block_is_silent(self):
+        warnings = []
+        apply_fence("# notes\n\n" + BLOCK + "\n", BLOCK, warn=warnings.append)
+        remove_fence(BLOCK, warn=warnings.append)
+        self.assertEqual(warnings, [])
+
+    def test_warning_is_optional(self):
+        # No warn callback -> still behaves, just silently.
+        self.assertIn(FENCE_END, apply_fence(self.TWO_BLOCKS, BLOCK))
+
+
+class FileStyleTest(unittest.TestCase):
+    """detect_style() recovers what read_text()'s universal newlines discard."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="xylem-style-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _write(self, data):
+        path = os.path.join(self.tmp, "f.md")
+        with open(path, "wb") as fh:
+            fh.write(data)
+        return path
+
+    def test_crlf_detected(self):
+        self.assertEqual(detect_style(self._write(b"a\r\nb\r\n")),
+                         ("\r\n", False))
+
+    def test_lf_detected(self):
+        self.assertEqual(detect_style(self._write(b"a\nb\n")), ("\n", False))
+
+    def test_bom_detected(self):
+        newline, bom = detect_style(self._write(b"\xef\xbb\xbfa\n"))
+        self.assertTrue(bom)
+        self.assertEqual(newline, "\n")
+
+    def test_mixed_newlines_take_the_dominant_one(self):
+        self.assertEqual(detect_style(self._write(b"a\r\nb\r\nc\n"))[0], "\r\n")
+
+    def test_missing_file_defaults_to_lf(self):
+        self.assertEqual(detect_style(os.path.join(self.tmp, "nope")),
+                         ("\n", False))
+
 
 
 if __name__ == "__main__":

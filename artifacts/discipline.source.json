@@ -1,0 +1,64 @@
+{
+  "$comment": "CANONICAL SOURCE for the Xylem habit layer. Do not edit the rendered outputs directly -- artifacts/claude_md_block.md, artifacts/xylem_discipline.md, and plugin/artifacts/discipline.md are all generated from this file by scripts/render_discipline.py, and tests/test_generated_sync.py fails if they drift. Run: python scripts/render_discipline.py --write",
+  "loop": "Survey board -> claim touches -> load memory (recall) -> work (raise judgment calls) -> record decisions -> release with closing note -> distill captures",
+  "preamble_block": "This machine runs the Xylem suite (context-keeper, agentsync, cambium). Follow this discipline:",
+  "preamble_command": "Follow this workflow for the whole session. The loop:",
+  "preamble_plugin": "This session is running with the Xylem stack: a memory that persists, coordination across agents, and a loop that compounds what you learn. Work the habit, not just the task.",
+  "rules": [
+    {
+      "id": "survey",
+      "title": "Survey the board",
+      "lead": "Before multi-file or long-running work",
+      "body": "survey the agentsync board. Read who is active and what is already claimed. Do not touch a file another agent holds without asking first."
+    },
+    {
+      "id": "claim",
+      "title": "Claim your touches",
+      "lead": "Before you edit, not after",
+      "body": "claim every file or area the pre-approved task will modify. Never force over an active peer's claim without asking first. On claims running longer than ~15 minutes, post brief `update_status` notes at milestones -- 2 to 4 per claim, no more."
+    },
+    {
+      "id": "memory",
+      "title": "Load memory",
+      "lead": "At session start",
+      "body": "a context-keeper project summary is injected via hook. If one was not injected, pull `get_project_summary` before starting work. Treat any active constraints it lists as binding. Do not re-litigate settled decisions -- if one looks wrong, raise it (via the agentsync-remote `mailbox` tool if that Worker is configured, otherwise ask the user); don't silently override it."
+    },
+    {
+      "id": "recall",
+      "title": "Recall what the team already learned",
+      "lead": "Before starting work",
+      "body": "`recall()` relevant knowledge from cambium for the task at hand -- past outcomes, gotchas, and decisions distilled from prior sessions -- so you build on what the team already learned instead of rediscovering it."
+    },
+    {
+      "id": "work",
+      "title": "Work, and raise judgment calls",
+      "lead": "On judgment calls with multiple defensible answers",
+      "body": "raise the question (via the agentsync-remote `mailbox` tool if that Worker is configured, otherwise ask the user) and continue on non-dependent work rather than blocking. Do the pre-approved work and nothing outside it."
+    },
+    {
+      "id": "record",
+      "title": "Record decisions as you make them",
+      "lead": "When you make an architectural or design decision",
+      "body": "record it in context-keeper with its rationale at the moment it's made -- the problem, why this option won, the alternatives, the tradeoffs -- not in a batch at the end."
+    },
+    {
+      "id": "release",
+      "title": "Release with a closing note",
+      "lead": "Before ending",
+      "body": "record any new decisions, then release each claim with a closing note stating the outcome and the recommended next action. For a build session, the definition of done includes PUSHED TO ORIGIN, not just committed -- verify the push in the closing note."
+    },
+    {
+      "id": "distill",
+      "title": "Capture (mostly automatic)",
+      "lead": "As work completes",
+      "body": "capture is passive: cambium's `distill()` runs from the SessionEnd hook, turning done agentsync claims and context-keeper decisions into memory. If that hook is not installed, run `distill()` yourself as work lands, and `promote()` knowledge that has earned recalls so the team and org see it."
+    }
+  ],
+  "block_footer": "Run `/xylem-discipline` to load the full workflow for a session.",
+  "command_frontmatter": {
+    "description": "Load the Xylem coordination + memory workflow for this session",
+    "argument-hint": "[describe the pre-approved task]"
+  },
+  "command_args_note": "**Pre-approved work for this session:** $ARGUMENTS\n\nIf the slot above is empty, ask the user what the pre-approved task is before claiming anything.",
+  "plugin_footer": "Recall, claim, record, release. Small, honest, compounding. The point is that the next session - yours or a teammate's - starts smarter than this one did."
+}

@@ -21,23 +21,57 @@ Memory and coordination run over MCP and are configured below. Knowledge runs th
 skills (`distill-session`, `recall-knowledge`, `promote-to-org`) and the automatic
 session-end distillation need it.
 
+## Plugin vs. the full installer — pick deliberately
+
+The plugin is **remote-only**. It is the fastest way in, but it is not the whole stack,
+and the difference matters most if you have not deployed the Cloudflare Workers.
+
+| | This plugin | [`./install.sh`](../README.md#as-a-full-local-first-install--the-habit-layer) |
+| --- | :---: | :---: |
+| Seven skills | ✅ | ✗ |
+| Remote memory + coordination (http) | ✅ | ✅ |
+| **Local memory server** (context-keeper stdio) | ✗ | ✅ |
+| **Local coordination** (agentsync stdio) | ✗ | ✅ |
+| **Local knowledge** (cambium MCP) | ✗ | ✅ |
+| Project summary injected at SessionStart | ✗ | ✅ |
+| Version-staleness nudge | ✗ | ✅ |
+| `/xylem-discipline` slash command | ✗ | ✅ |
+| Fenced `CLAUDE.md` habit block | ✗ | ✅ |
+| SessionEnd distill | via `cambium` CLI | in-process |
+| Needs a clone | ✗ | ✅ |
+| Needs deployed Workers | **✅** | ✗ (local-first) |
+
+**The consequence worth stating plainly:** with the plugin and no deployed Workers, the
+SessionStart primer will tell your agent to recall from a decision memory that isn't
+there. If you want the local-first stack — memory that works with no network and no
+Cloudflare account — use the installer instead. You can also run both: install the
+plugin for the skills, then run `./install.sh` for the local servers and habit block.
+
 ## Setup
 
 ### 1. Environment variables
 
-The MCP servers read four environment variables. Set them in your shell (or your Claude
-Code environment) before starting a session:
+The MCP servers read **two** environment variables. Set them in your shell (or your
+Claude Code environment) before starting a session:
 
 | Variable | What it is |
 | --- | --- |
-| `CONTEXT_KEEPER_REMOTE_URL` | HTTPS URL of your context-keeper-remote MCP endpoint |
-| `CONTEXT_KEEPER_REMOTE_TOKEN` | Bearer token for context-keeper-remote |
-| `AGENTSYNC_REMOTE_URL` | HTTPS URL of your agent-sync-remote MCP endpoint |
-| `AGENTSYNC_REMOTE_TOKEN` | Bearer token for agent-sync-remote |
+| `CONTEXT_KEEPER_REMOTE_URL` | Full connector URL of your context-keeper-remote Worker |
+| `AGENTSYNC_REMOTE_URL` | Full connector URL of your agentsync-remote Worker |
 
-The token is sent as an `Authorization: Bearer ...` header and is never written to disk by
-the plugin. Deploy your own context-keeper-remote and agentsync-remote workers (see their
-repos) to get the URLs and tokens.
+**The URL is the credential.** These Workers authenticate on the URL path
+(`https://.../mcp/<token>`) and never read an `Authorization` header — claude.ai
+connectors don't reliably send bearer headers, so path-token auth is what works across
+both transports. Treat the URL like a password; rotating the token invalidates every
+prior URL.
+
+> Earlier versions of this plugin documented `CONTEXT_KEEPER_REMOTE_TOKEN` and
+> `AGENTSYNC_REMOTE_TOKEN` and sent them as `Authorization: Bearer`. That header was
+> never read by either Worker, so those variables did nothing. They are gone; put the
+> token in the URL. See [docs/manifest.md](../docs/manifest.md#auth).
+
+Deploy your own context-keeper-remote and agentsync-remote Workers (see their repos) to
+get the URLs.
 
 ### 2. cambium (optional, for the knowledge skills)
 
@@ -60,10 +94,10 @@ Each skill triggers on natural phrasing — you don't call them by name.
 
 ### record-decision
 Capture an engineering or design decision so it persists.
-> "Record this decision: we're using the Bearer header for both workers because the edge
-> strips custom headers." -> writes problem / why_chosen / alternatives / tradeoffs / tags
-> into context-keeper, records any standing rule as a constraint, and mirrors to
-> DECISIONS.md if the repo keeps one.
+> "Record this decision: we authenticate on the URL path instead of a Bearer header,
+> because claude.ai connectors don't reliably send custom headers." -> writes problem /
+> why_chosen / alternatives / tradeoffs / tags into context-keeper, records any standing
+> rule as a constraint, and mirrors to DECISIONS.md if the repo keeps one.
 
 ### recall-context
 Load what's already been decided in this project before you act.
