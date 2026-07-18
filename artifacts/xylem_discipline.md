@@ -3,6 +3,8 @@ description: Load the Xylem coordination + memory workflow for this session
 argument-hint: [describe the pre-approved task]
 ---
 
+<!-- GENERATED FILE -- do not edit by hand. Source: artifacts/discipline.source.json. Regenerate: python scripts/render_discipline.py --write -->
+
 # Xylem discipline
 
 Follow this workflow for the whole session. The loop:
@@ -16,22 +18,25 @@ Survey board -> claim touches -> load memory (recall) -> work (raise judgment ca
 If the slot above is empty, ask the user what the pre-approved task is before claiming anything.
 
 ## 1. Survey the board
-Call the agentsync `survey` tool. Read who is active and what is already claimed. Do not touch a file another agent holds without asking first.
+Before multi-file or long-running work, survey the agentsync board. Read who is active and what is already claimed. Do not touch a file another agent holds without asking first.
 
 ## 2. Claim your touches
-Use agentsync `claim` for every file/area the pre-approved task will modify. Claim before you edit, not after. If a claim conflicts with an active peer, stop and ask the user -- never force over an active claim. On claims running longer than ~15 minutes, post brief `update_status` notes at milestones -- 2 to 4 per claim, no more.
+Before you edit, not after, claim every file or area the pre-approved task will modify. Never force over an active peer's claim without asking first. On claims running longer than ~15 minutes, post brief `update_status` notes at milestones -- 2 to 4 per claim, no more.
 
 ## 3. Load memory
-Read the context-keeper project summary (it is also injected at session start via hook). If a project summary was not injected at session start, pull `get_project_summary` before starting work. Then `recall()` relevant knowledge from cambium for the task at hand -- prior outcomes, gotchas, and decisions distilled from earlier sessions -- so you build on what the team already learned. Treat every active constraint as binding. Do not re-litigate settled decisions; if one looks wrong, raise it (via the agentsync-remote `mailbox` tool if that Worker is configured, otherwise ask the user).
+At session start, a context-keeper project summary is injected via hook. If one was not injected, pull `get_project_summary` before starting work. Treat any active constraints it lists as binding. Do not re-litigate settled decisions -- if one looks wrong, raise it (via the agentsync-remote `mailbox` tool if that Worker is configured, otherwise ask the user); don't silently override it.
 
-## 4. Work
-Do the pre-approved work and nothing outside it. On any judgment call with multiple defensible answers, raise the question (via the agentsync-remote `mailbox` tool if that Worker is configured, otherwise ask the user) and continue on non-dependent work rather than blocking.
+## 4. Recall what the team already learned
+Before starting work, `recall()` relevant knowledge from cambium for the task at hand -- past outcomes, gotchas, and decisions distilled from prior sessions -- so you build on what the team already learned instead of rediscovering it.
 
-## 5. Record decisions
-The moment you make an architectural or design decision, record it in context-keeper with its rationale -- inline, not batched at the end.
+## 5. Work, and raise judgment calls
+On judgment calls with multiple defensible answers, raise the question (via the agentsync-remote `mailbox` tool if that Worker is configured, otherwise ask the user) and continue on non-dependent work rather than blocking. Do the pre-approved work and nothing outside it.
 
-## 6. Release with a closing note
-Before ending, confirm all new decisions are recorded, then `release` each claim with a closing note stating the outcome and the recommended next action for whoever picks it up. For a build session, the definition of done includes PUSHED TO ORIGIN, not just committed -- verify the push in the closing note.
+## 6. Record decisions as you make them
+When you make an architectural or design decision, record it in context-keeper with its rationale at the moment it's made -- the problem, why this option won, the alternatives, the tradeoffs -- not in a batch at the end.
 
-## 7. Capture (mostly automatic)
-cambium's `distill()` fires from the SessionEnd hook, turning your done agentsync claims and recorded context-keeper decisions into memory with zero extra effort. If that hook is not installed on this machine, run `distill()` yourself as work lands, and `promote()` knowledge that has earned recalls so the team and org benefit.
+## 7. Release with a closing note
+Before ending, record any new decisions, then release each claim with a closing note stating the outcome and the recommended next action. For a build session, the definition of done includes PUSHED TO ORIGIN, not just committed -- verify the push in the closing note.
+
+## 8. Capture (mostly automatic)
+As work completes, capture is passive: cambium's `distill()` runs from the SessionEnd hook, turning done agentsync claims and context-keeper decisions into memory. If that hook is not installed, run `distill()` yourself as work lands, and `promote()` knowledge that has earned recalls so the team and org see it.

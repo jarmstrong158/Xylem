@@ -1,10 +1,10 @@
-{
+﻿{
   "name": "xylem",
   "version": "0.2.0",
   "description": "Agents that remember, coordinate, and compound. Persistent decision memory and a multi-agent claim/release board, plus knowledge distillation and session hooks that make the discipline automatic: recall before acting, claim before editing, record as you decide, and distill at session end.",
-  "author": { "name": "Jonny Armstrong" },
-  "homepage": "https://github.com/jarmstrong158/xylem",
-  "repository": "https://github.com/jarmstrong158/xylem",
+  "author": { "name": "Jonathan Armstrong" },
+  "homepage": "https://github.com/jarmstrong158/Xylem",
+  "repository": "https://github.com/jarmstrong158/Xylem",
   "license": "MIT",
   "keywords": ["memory","coordination","multi-agent","decisions","knowledge","distillation","context","mcp"]
 }

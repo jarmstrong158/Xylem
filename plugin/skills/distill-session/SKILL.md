@@ -1,6 +1,6 @@
 ---
 name: distill-session
-description: "used for 'distill this session', 'harvest what we learned', 'promote learnings to the team'. Runs `cambium distill` (local capture); lets the recall gate promote durable items to team scope; if cambium is missing, says so."
+description: "used for 'distill this session', 'capture what we learned', 'harvest this session'. LOCAL capture only — runs `cambium distill` and lets the recall gate decide what earns team scope; it never promotes on request (use promote-to-org to elevate something deliberately). If cambium is missing, says so."
 metadata:
   version: "0.1.0"
 ---

@@ -1,5 +1,15 @@
+# Normalize every text file to LF in the repository. Without this, whether a
+# file lands as LF or CRLF depends on each contributor's core.autocrlf, which
+# produces whole-file diffs that have nothing to do with the change.
+* text=auto eol=lf
+
 # Keep shell scripts LF so the shebang works on macOS/Linux regardless of host
 install.sh text eol=lf
 *.sh text eol=lf
+
 # PowerShell is fine either way; leave CRLF on Windows checkout
 install.ps1 text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary: never touch these
+*.png binary

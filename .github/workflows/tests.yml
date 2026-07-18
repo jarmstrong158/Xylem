@@ -1,0 +1,42 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }} · py${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The installer claims Python 3.8+ and macOS/Linux/Windows support.
+        # Test the floor and a current release on every OS so the claim stays true.
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.8', '3.12']
+        exclude:
+          # 3.8 is unavailable on the arm64 macos-latest runners.
+          - os: macos-latest
+            python-version: '3.8'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Confirm zero-dependency claim
+        # The suite is stdlib-only by design. No pip install step here is
+        # deliberate: if a test ever needs a third-party package, this job
+        # fails and that architectural claim gets re-litigated on purpose.
+        run: python -c "import sys; print(sys.version)"
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v

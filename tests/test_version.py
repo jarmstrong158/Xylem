@@ -7,6 +7,7 @@ import importlib.util
 import io
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -35,6 +36,18 @@ def _load_version_check():
 
 
 vc = _load_version_check()
+
+
+def _scrub_remote_urls(case):
+    """Drop *_REMOTE_URL from the environment for the duration of a test.
+
+    Those values ARE the credentials (the Workers authenticate on the URL path),
+    so a developer running the suite with a live token in their shell must not
+    have it written into a synthetic config on disk.
+    """
+    for key in [k for k in os.environ if k.endswith("_REMOTE_URL")]:
+        old = os.environ.pop(key)
+        case.addCleanup(os.environ.__setitem__, key, old)
 
 BLOCK_BODY = "\n## Xylem discipline\n\nbody\n"
 V1_BLOCK = FENCE_BEGIN + BLOCK_BODY + FENCE_END
@@ -95,10 +108,12 @@ class StampParseTest(unittest.TestCase):
 class VersionCheckTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="xylem-vc-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
         self.clone = os.path.join(self.tmp, "clone")
         os.makedirs(self.clone)
         self.claude_md = os.path.join(self.tmp, "CLAUDE.md")
         self._saved_env = {}
+        _scrub_remote_urls(self)
         # Isolate from any real config: only inspect our synthetic target.
         self._set_env("XYLEM_CHECK_TARGETS", self.claude_md)
         self._set_env("XYLEM_ROOT", self.clone)
@@ -205,6 +220,8 @@ class VersionCheckTest(unittest.TestCase):
 class UpdateVerbTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="xylem-update-")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        _scrub_remote_urls(self)
         self.claude_dir = os.path.join(self.tmp, "claude")
         os.makedirs(self.claude_dir)
         self.claude_md = os.path.join(self.claude_dir, "CLAUDE.md")

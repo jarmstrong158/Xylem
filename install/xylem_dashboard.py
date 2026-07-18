@@ -21,15 +21,25 @@ TWO ROUTES (pick with --remote; local is the default):
          Sees the full central mirror (incl. work from other machines/mobile).
          The token stays in local config; only counts/summaries land in the HTML.
 
-Nothing secret is ever written to the output — only names, counts, and short
-summaries. Every collector fails soft: a source that's missing or unreachable
-degrades that panel to empty with a warning; the dashboard still renders.
+WHAT LANDS IN THE OUTPUT — read this before publishing the HTML anywhere public.
+No token or credential is ever written. But free text *is*: claim titles,
+completion notes (up to 600 chars) and decision summaries are copied into the
+page close to verbatim. The only transformation applied is scrub_text(), which
+redacts home-directory paths (C:\\Users\\<name>, /home/<name>, /Users/<name> ->
+"<user>"). Anything else you typed into a note — internal hostnames, customer
+names, unreleased project names — will appear as written. If you are publishing
+this dashboard publicly, pass --no-notes to drop note/description bodies and keep
+only titles, names and counts.
+
+Every collector fails soft: a source that's missing or unreachable degrades that
+panel to empty with a warning; the dashboard still renders.
 
 Usage:
     python3 xylem_dashboard.py                       # local, writes ./dashboard.html
     python3 xylem_dashboard.py --output ~/xylem.html
     python3 xylem_dashboard.py --projects /a /b /c   # extra context-keeper clones
     python3 xylem_dashboard.py --remote              # use the Workers instead
+    python3 xylem_dashboard.py --no-notes            # omit note bodies (public publishing)
     python3 xylem_dashboard.py --dry-run             # print a data summary, write nothing
 """
 
@@ -43,14 +53,11 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Substring markers of throwaway/test projects that get written to the store
-# during development (e.g. "ck-schema-budget-smoketest", "e2e-live-upsert-check",
-# "enc_check"). They pollute the org view; drop them. Extend via the
-# XYLEM_DASHBOARD_EXCLUDE config key (list or comma-separated).
-_DEFAULT_EXCLUDE = (
-    "smoketest", "e2e-live", "upsert-check", "enc_check",
-    "ck_live_src", "ck-schema", ".github.io",
-)
+# Nothing is excluded by default — this is your org's data, not ours. Set the
+# XYLEM_DASHBOARD_EXCLUDE config key / env var (a list, or a comma-separated
+# string) to substring-match throwaway or test projects you don't want on the
+# board, e.g. "smoketest,e2e-live,scratch". Matching is case-insensitive.
+_DEFAULT_EXCLUDE = ()
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_TEMPLATE = HERE.parent / "docs" / "dashboard.template.html"
@@ -66,6 +73,59 @@ def warn(msg):
 
 def info(msg):
     print("  - " + msg)
+
+
+# --------------------------------------------------------------------------- #
+# text hygiene — every free-text field written to the output goes through
+# clean_text() before it is serialised into the HTML.
+# --------------------------------------------------------------------------- #
+# Home directories leak the machine account name (and often the real person's
+# name) into a page that is frequently published to GitHub Pages. Redact the
+# user component, keep the shape of the path so the note still reads sensibly.
+# Windows paths arrive with either one backslash or two (JSON-escaped notes).
+_HOME_PATTERNS = (
+    # C:\Users\alice  /  C:\\Users\\alice
+    (re.compile(r"([A-Za-z]:\\{1,2}Users\\{1,2})([^\\/\s\"';:,)\]}]+)"), r"\1<user>"),
+    # /home/alice
+    (re.compile(r"(/home/)([^/\s\"';:,)\]}]+)"), r"\1<user>"),
+    # /Users/alice
+    (re.compile(r"(/Users/)([^/\s\"';:,)\]}]+)"), r"\1<user>"),
+)
+
+# Markers of UTF-8 bytes that were decoded as cp1252 somewhere upstream
+# ("→" -> "â†'", "'" -> "â€™").
+_MOJI_MARKERS = ("Ã", "â", "Â", "Ë", "Ð", "Ñ")
+
+
+def _moji_score(s):
+    return sum(s.count(m) for m in _MOJI_MARKERS)
+
+
+def _demojibake(s):
+    """Undo one round of UTF-8-decoded-as-cp1252, but only if it actually helps."""
+    if not s or _moji_score(s) == 0:
+        return s
+    try:
+        fixed = s.encode("cp1252").decode("utf-8")
+    except Exception:
+        return s
+    return fixed if _moji_score(fixed) < _moji_score(s) else s
+
+
+def scrub_text(s):
+    """Redact home-directory paths from any free text bound for the output."""
+    if not s:
+        return s
+    out = str(s)
+    for pat, repl in _HOME_PATTERNS:
+        out = pat.sub(repl, out)
+    return out
+
+
+def clean_text(s, limit=None):
+    """The single funnel for free text: de-mojibake, scrub, then truncate."""
+    out = scrub_text(_demojibake(str(s or "")))
+    return out[:limit] if limit else out
 
 
 # --------------------------------------------------------------------------- #
@@ -144,12 +204,17 @@ def attribute_repo(text, branch, known, note=""):
     """Best-effort: which repo a claim is about, matched from its task, branch, or
     completion note. Falls back to 'unassigned' when nothing names a known repo —
     a plain catch-all that also flags work that wasn't tagged to any repo (never a
-    made-up repo name)."""
-    hay = ((text or "") + " " + (branch or "") + " " + (note or "")).lower()
-    # longest known name first so 'context-keeper-remote' wins over 'context-keeper'
-    for name in sorted(known, key=len, reverse=True):
-        if name.lower() in hay:
-            return name
+    made-up repo name).
+
+    Sources are checked in priority order — task text, then branch, then the
+    completion note — and the first hit wins. Concatenating them into one
+    haystack let a long note that happens to mention another repo outvote the
+    claim's own title, which mislabelled real events."""
+    for hay in (text or "", branch or "", note or ""):
+        # longest known name first so 'context-keeper-remote' wins over 'context-keeper'
+        for name in sorted(known, key=len, reverse=True):
+            if name.lower() in hay.lower():
+                return name
     return "unassigned"
 
 
@@ -190,7 +255,7 @@ def resolve_ref(repo, branch):
     return None
 
 
-def read_board_local(repo, branch, known):
+def read_board_local(repo, branch, known, no_notes=False):
     """Reconstruct the coordination event list from claims.json git history."""
     if not repo or not Path(repo).exists():
         warn("agentsync: no local clone (set AGENTSYNC_REPO) — skipping coordination")
@@ -230,15 +295,16 @@ def read_board_local(repo, branch, known):
     events = []
     for (agent, task), rec in agg.items():
         status = "done" if rec["status"] in ("done", "released") else "live"
+        note = "" if no_notes else clean_text(rec["note"])
         events.append({
-            "t": task,
+            "t": clean_text(task),
             "repo": attribute_repo(task, rec["branch"], known, rec["note"]),
             "who": agent,
             "when": mmdd_from_epoch(rec["last"]),
             "on": ymd_from_epoch(rec["last"]),
             "status": status,
-            "desc": (rec["note"] or "")[:150],
-            "note": (rec["note"] or "")[:600],
+            "desc": note[:150],
+            "note": note[:600],
             "_sort": int(rec["last"]),
         })
     events.sort(key=lambda e: e["_sort"], reverse=True)
@@ -263,7 +329,7 @@ def read_context_local(project_paths, exclude=()):
         active.sort(key=lambda d: d.get("updated_at") or d.get("created_at") or "", reverse=True)
         for d in active[:2]:
             decisions.append({"id": "%s/%s" % (name, d.get("id", "?")),
-                              "repo": name, "t": (d.get("summary") or "")[:160]})
+                              "repo": name, "t": clean_text(d.get("summary"), 160)})
     stores.sort(key=lambda s: s["dec"], reverse=True)
     return stores, decisions
 
@@ -369,7 +435,7 @@ def read_context_remote(url, exclude=()):
             s = rpc_call_tool(url, "get_project_summary", {"project": name})
             for d in (s.get("recent_decisions") or [])[:2]:
                 decisions.append({"id": "%s/%s" % (name, d.get("id", "?")),
-                                  "repo": name, "t": (d.get("summary") or "")[:160]})
+                                  "repo": name, "t": clean_text(d.get("summary"), 160)})
         except Exception as exc:
             warn("context-keeper-remote: summary for %s failed (%s)" % (name, exc))
     stores.sort(key=lambda s: s["dec"], reverse=True)
@@ -392,7 +458,7 @@ _HIST_RE = re.compile(r"^agentsync:\s+(\S+)\s+(claims|releases)\s+'(.*?)'(?:\s+\
 _HIST_NOTE_RE = re.compile(r"^agentsync:\s+\S+\s+(?:claims|releases)\s+'.*?'\s+\((.*)\)\s*$")
 
 
-def read_board_remote(url, known):
+def read_board_remote(url, known, no_notes=False):
     # Current claims from survey (rich: status/note/branch per active claim).
     current = {}
     try:
@@ -446,15 +512,20 @@ def read_board_remote(url, known):
         cur = current.get((agent, task))
         live = cur is not None and cur.get("status") not in ("done", "released")
         # detail note: the live claim's own note, else the newest release note
-        note = ((cur or {}).get("note") or rec.get("note") or "")[:600]
+        raw_note = (cur or {}).get("note") or rec.get("note") or ""
+        note = "" if no_notes else clean_text(raw_note, 600)
+        # `cur` is None for every completed claim, so the live claim's note alone
+        # left 43 of 44 rows with a blank description — fall back to the release
+        # note that the history parser already recovered.
+        desc = "" if no_notes else clean_text((cur or {}).get("note") or raw_note, 150)
         events.append({
-            "t": task,
-            "repo": attribute_repo(task, (cur or {}).get("branch"), known, note),
+            "t": clean_text(task),
+            "repo": attribute_repo(task, (cur or {}).get("branch"), known, raw_note),
             "who": agent,
             "when": mmdd_from_iso(rec["last"]),
             "on": ymd_from_iso(rec["last"]),
             "status": "live" if live else "done",
-            "desc": ((cur or {}).get("note") or "")[:150],
+            "desc": desc,
             "note": note,
             "_sort": rec["last"] or "",
         })
@@ -510,7 +581,7 @@ def assemble(route, stores, decisions, events, funnel, coordination_repo):
         "headline_sub": sub,
         "source": "source: %s" % ("local git board + .context/ stores" if route == "local"
                                    else "context-keeper-remote + agentsync-remote"),
-        "coordination_repo": coordination_repo or ("(local board)" if route == "local" else "(remote)"),
+        "coordination_repo": clean_text(coordination_repo) or ("(local board)" if route == "local" else "(remote)"),
         "mesh_events": len(events),
     }
     if funnel:
@@ -529,7 +600,17 @@ def assemble(route, stores, decisions, events, funnel, coordination_repo):
 
 
 def render(template_path, data, out_path):
-    tpl = Path(template_path).read_text(encoding="utf-8")
+    tpl_path = Path(template_path)
+    if not tpl_path.is_file():
+        raise RuntimeError(
+            "template not found: %s\n"
+            "The default template lives next to this script at ../docs/dashboard.template.html, "
+            "so copying xylem_dashboard.py on its own leaves it with nothing to render.\n"
+            "Fix: pass --template /path/to/dashboard.template.html, or copy the docs/ template "
+            "from the xylem repo (https://github.com/jarmstrong158/Xylem) alongside the script."
+            % tpl_path
+        )
+    tpl = tpl_path.read_text(encoding="utf-8")
     if PLACEHOLDER not in tpl:
         raise RuntimeError("template %s is missing the %s placeholder" % (template_path, PLACEHOLDER))
     html = tpl.replace(PLACEHOLDER, json.dumps(data, ensure_ascii=False))
@@ -547,6 +628,12 @@ def main(argv=None):
     ap.add_argument("--template", default=str(DEFAULT_TEMPLATE), help="path to dashboard.template.html")
     ap.add_argument("--config", help="path to xylem.config.json")
     ap.add_argument("--projects", nargs="*", help="extra context-keeper project clone paths (local route)")
+    ap.add_argument("--coordination-repo",
+                    help="label for the coordination board shown in the footer "
+                         "(default: the local agentsync clone's name, or '(remote)')")
+    ap.add_argument("--no-notes", action="store_true",
+                    help="omit claim note/description bodies from the output — keep only "
+                         "titles, names and counts (recommended when publishing publicly)")
     ap.add_argument("--dry-run", action="store_true", help="print a data summary, write nothing")
     args = ap.parse_args(argv)
 
@@ -555,7 +642,10 @@ def main(argv=None):
     print("Xylem dashboard — %s route" % route.upper())
 
     known_repos = set(STACK_REPOS)
-    coord_repo = None
+    # Footer label for the board. Explicit flag wins; otherwise the local route
+    # names the agentsync clone it actually read and the remote route stays
+    # generic (assemble() supplies the fallback).
+    coord_repo = args.coordination_repo or cfg_get(cfg, "XYLEM_COORDINATION_REPO")
 
     exclude = list(_DEFAULT_EXCLUDE)
     extra_excl = cfg_get(cfg, "XYLEM_DASHBOARD_EXCLUDE")
@@ -571,7 +661,9 @@ def main(argv=None):
         stores, decisions = read_context_local(projects, exclude)
         repo = cfg_get(cfg, "AGENTSYNC_REPO")
         branch = cfg_get(cfg, "AGENTSYNC_BRANCH", "agentsync")
-        events, _ = read_board_local(repo, branch, known_repos)
+        if not coord_repo and repo:
+            coord_repo = "%s (%s)" % (Path(repo).name, branch)
+        events, _ = read_board_local(repo, branch, known_repos, args.no_notes)
         funnel = read_cambium_local(cfg_get(cfg, "CAMBIUM_REPO"))
     else:
         ck_url = cfg_get(cfg, "CONTEXT_KEEPER_REMOTE_URL")
@@ -590,7 +682,7 @@ def main(argv=None):
         events = []
         if as_url:
             try:
-                events, _ = read_board_remote(as_url, known_repos)
+                events, _ = read_board_remote(as_url, known_repos, args.no_notes)
             except Exception as exc:
                 warn("agentsync-remote unreachable (%s)" % exc)
         funnel = None
@@ -606,10 +698,17 @@ def main(argv=None):
     )
     print("Collected: " + totals)
 
-    if route == "remote" and not data["stores"] and not data["events"]:
-        print("Refusing to write: the remote route collected no projects and no "
-              "coordination events (Workers unreachable or misconfigured). Keeping "
-              "any existing output rather than overwriting it with an empty dashboard.",
+    # Applies to both routes: an empty collection means something is misconfigured
+    # (Workers unreachable, or no .context/ clones and no agentsync board found),
+    # and overwriting a good dashboard with an empty one is worse than failing.
+    if not data["stores"] and not data["events"]:
+        print("Refusing to write: the %s route collected no projects and no "
+              "coordination events (%s). Keeping any existing output rather than "
+              "overwriting it with an empty dashboard." % (
+                  route,
+                  "Workers unreachable or misconfigured" if route == "remote"
+                  else "no .context/ project clones and no agentsync board found — "
+                       "check AGENTSYNC_REPO / XYLEM_PROJECTS_ROOT, or pass --projects"),
               file=sys.stderr)
         return 2
 
@@ -622,7 +721,10 @@ def main(argv=None):
     except Exception as exc:
         print("Failed to render: %s" % exc, file=sys.stderr)
         return 1
-    print("Wrote %s (self-contained; no secrets)." % args.output)
+    print("Wrote %s (self-contained; no credentials%s)." % (
+        args.output, "; note bodies omitted" if args.no_notes
+        else "; note/summary text included verbatim apart from home-path scrubbing — "
+             "use --no-notes before publishing publicly"))
     return 0
 
 

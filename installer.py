@@ -25,12 +25,14 @@ that the version_check nudge points at.
 """
 import argparse
 import difflib
+import hashlib
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 
 # --------------------------------------------------------------------------
 # Constants
@@ -47,6 +49,13 @@ BACKUP_SUFFIX = ".xylem-backup"
 # Each hook is identified by its script filename appearing in the command.
 HOOK_MARKER = "session_start_hook.py"
 VERSION_CHECK_MARKER = "version_check.py"
+# Sentinel written into every hook group we own. Ownership must be explicit:
+# the script filenames above are generic enough that a bare substring test would
+# happily match (and then delete) an unrelated tool's hook.
+OWNER_KEY = "_xylem"
+# Registered hook timeouts (seconds), matching the plugin path's hooks.json.
+HOOK_TIMEOUT = 10
+DISTILL_HOOK_TIMEOUT = 60
 # The SessionEnd hook that fires cambium's distill() -- the capture leg of the
 # compound-growth loop. Keyed by its own script-name marker like the others.
 DISTILL_HOOK_MARKER = "session_end_hook.py"
@@ -78,18 +87,86 @@ def load_json_text(text):
     return json.loads(text)
 
 
-def dump_json_text(obj):
-    """Serialize deterministically so re-runs produce identical bytes."""
-    return json.dumps(obj, indent=2, ensure_ascii=False) + "\n"
+def dump_json_text(obj, indent=2):
+    """Serialize deterministically so re-runs produce identical bytes.
+
+    `indent` mirrors whatever the existing file used (see detect_json_indent) so
+    reformatting a hand-maintained settings.json is never a side effect.
+    """
+    return json.dumps(obj, indent=indent, ensure_ascii=False) + "\n"
+
+
+def detect_json_indent(text, default=2):
+    """Sniff the indent unit of an existing JSON document.
+
+    Returns an int (spaces) or "\\t", both of which json.dumps accepts.
+    """
+    match = re.search(r"[\{\[][^\S\n]*\r?\n([ \t]+)\S", text or "")
+    if match is None:
+        return default
+    whitespace = match.group(1)
+    if "\t" in whitespace:
+        return "\t"
+    return len(whitespace)
+
+
+def detect_style(path):
+    """(newline, has_bom) of an existing file; defaults for a missing one.
+
+    The installer reads with universal newlines, so without this the write leg
+    would silently rewrite every line of a CRLF file (and drop a UTF-8 BOM),
+    turning a surgical edit into a whole-file git diff.
+    """
+    if not os.path.isfile(path):
+        return "\n", False
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read()
+    except OSError:
+        return "\n", False
+    has_bom = raw.startswith(b"\xef\xbb\xbf")
+    crlf = raw.count(b"\r\n")
+    lf = raw.count(b"\n") - crlf
+    newline = "\r\n" if crlf > lf else "\n"
+    return newline, has_bom
 
 
 def read_text(path):
     # utf-8-sig transparently strips a leading BOM if some editor/tool wrote one
-    # (common on Windows), while reading plain UTF-8 unchanged.
+    # (common on Windows), while reading plain UTF-8 unchanged. The BOM and the
+    # newline convention are recovered separately by detect_style().
     if os.path.isfile(path):
         with open(path, "r", encoding="utf-8-sig") as fh:
             return fh.read()
     return ""
+
+
+# A URL's path can be the whole credential (the Workers authenticate on
+# /mcp/<token> alone), so anything URL-shaped is redacted before it reaches a
+# terminal, a --dry-run diff, or a pasted CI log.
+URL_RE = re.compile(r"https?://[^\s\"'<>\\]+")
+
+
+def _redact_url(match):
+    url = match.group(0)
+    scheme, _, rest = url.partition("://")
+    host, slash, path = rest.partition("/")
+    if not slash or not path:
+        return url
+    # Keep the first path segment (structural, e.g. "mcp"); redact the rest,
+    # along with any query string or fragment.
+    head = path.split("?")[0].split("#")[0]
+    segments = [s for s in head.split("/") if s]
+    if not segments:
+        return url
+    kept = segments[0] if len(segments) > 1 else ""
+    prefix = "%s://%s/%s" % (scheme, host, kept + "/" if kept else "")
+    return prefix + "<redacted>"
+
+
+def redact(text):
+    """Mask credential-bearing URL paths anywhere in human-facing output."""
+    return URL_RE.sub(_redact_url, text or "")
 
 
 def resolve_placeholders(value, mapping):
@@ -129,7 +206,23 @@ def parse_fence_version(text):
     return int(match.group(1)) if match.group(1) else 1
 
 
-def apply_fence(text, block, version=None):
+def _warn_multiple_fences(text, warn):
+    """Warn when more than one Xylem block is present.
+
+    Every fence operation works on the FIRST block only, so a duplicate block
+    would otherwise sit there orphaned and never be updated or removed again.
+    """
+    if warn is None:
+        return
+    begins = len(FENCE_BEGIN_RE.findall(text or ""))
+    ends = (text or "").count(FENCE_END)
+    if begins > 1 or ends > 1:
+        warn("CLAUDE.md contains %d Xylem begin and %d end markers; only the "
+             "first block is managed. Delete the extra block(s) by hand -- the "
+             "installer will not touch them." % (begins, ends))
+
+
+def apply_fence(text, block, version=None, warn=None):
     """Insert/replace the Xylem fenced block in CLAUDE.md text. Idempotent.
 
     When `version` is given, the block's own begin marker is (re)stamped to
@@ -137,6 +230,7 @@ def apply_fence(text, block, version=None):
     for the deployed stamp. An existing block is detected and replaced whether it
     carries the old unstamped marker or any versioned one.
     """
+    _warn_multiple_fences(text, warn)
     block = block.strip("\n")
     if version is not None:
         block = FENCE_BEGIN_RE.sub(fence_begin(version), block, count=1)
@@ -153,11 +247,12 @@ def apply_fence(text, block, version=None):
     return text + block + "\n"
 
 
-def remove_fence(text):
+def remove_fence(text, warn=None):
     """Remove the Xylem fenced block, leaving surrounding text intact.
 
     Detects both the legacy unstamped and the versioned begin marker.
     """
+    _warn_multiple_fences(text, warn)
     match = FENCE_BEGIN_RE.search(text)
     end = text.find(FENCE_END)
     if match is None or end == -1 or end < match.start():
@@ -227,28 +322,79 @@ def remove_mcp_servers(settings, names):
     return settings
 
 
+def _under_xylem_root(command):
+    """True if `command` invokes a script inside this xylem checkout."""
+    root = to_fwd(ROOT).rstrip("/")
+    if not root:
+        return False
+    haystack = to_fwd(command or "")
+    if os.name == "nt":  # Windows paths are case-insensitive
+        haystack = haystack.lower()
+        root = root.lower()
+    return (root + "/") in haystack
+
+
 def _is_xylem_hook_group(group, marker):
+    """True only for hook groups this installer owns.
+
+    Ownership is deliberately narrow. The script filenames we key on
+    (session_start_hook.py, version_check.py, session_end_hook.py) are generic,
+    so a bare substring test would also match -- and uninstall would then delete
+    -- an unrelated tool's hook. A group qualifies when it carries our sentinel
+    key, or (for legacy groups written before the sentinel existed) when the
+    matching command resolves to a script under this xylem root.
+    """
+    if not isinstance(group, dict):
+        return False
+    owned = group.get(OWNER_KEY) is True
     for hook in (group.get("hooks") or []):
-        if marker in (hook.get("command") or ""):
+        if not isinstance(hook, dict):
+            continue
+        command = hook.get("command") or ""
+        if marker not in command:
+            continue
+        if owned or _under_xylem_root(command):
             return True
     return False
 
 
-def merge_hooks(settings, command, marker=HOOK_MARKER, event="SessionStart"):
-    """Register a hook under `event` once. Idempotent: replaces any prior one.
+def merge_hooks(settings, command, marker=HOOK_MARKER, event="SessionStart",
+                timeout=HOOK_TIMEOUT):
+    """Register a hook under `event` once. Idempotent: updates any prior one.
 
     `event` defaults to SessionStart (the memory-injection and version-check
     hooks); the SessionEnd distill hook passes event="SessionEnd".
+
+    The existing group is updated IN PLACE: a remove-then-append would drop any
+    key the user added to our group (e.g. `matcher`) and shuffle it to the end
+    of the list, producing a spurious settings.json write on every run.
     """
     hooks = settings.setdefault("hooks", {})
     groups = hooks.setdefault(event, [])
-    groups[:] = [g for g in groups if not _is_xylem_hook_group(g, marker)]
-    groups.append({"hooks": [{"type": "command", "command": command}]})
+    entry = {"type": "command", "command": command, "timeout": timeout}
+    for group in groups:
+        if not _is_xylem_hook_group(group, marker):
+            continue
+        group[OWNER_KEY] = True
+        inner = group.get("hooks") or []
+        for index, hook in enumerate(inner):
+            if isinstance(hook, dict) and marker in (hook.get("command") or ""):
+                hook.update(entry)
+                inner[index] = hook
+                break
+        else:
+            inner.append(entry)
+        group["hooks"] = inner
+        return settings
+    groups.append({OWNER_KEY: True, "hooks": [entry]})
     return settings
 
 
 def remove_hooks(settings, marker=HOOK_MARKER, event="SessionStart"):
-    """Remove the Xylem hook from `event`; prune empty containers."""
+    """Remove the Xylem hook from `event`; prune empty containers.
+
+    Foreign hooks that merely mention the same script filename are left alone.
+    """
     hooks = settings.get("hooks")
     if not isinstance(hooks, dict):
         return settings
@@ -301,6 +447,7 @@ def build_settings_install(settings, manifest, mapping, ck_server_path,
                            version_check_command, distill_command, warn):
     """Apply every Xylem install transform to a settings dict (in place)."""
     entries = {}
+    stale = []
     for server in enabled_servers(manifest):
         transport = server.get("transport")
         if transport == "stdio":
@@ -309,9 +456,22 @@ def build_settings_install(settings, manifest, mapping, ck_server_path,
             entry = build_http_entry(server, os.environ.get, warn)
             if entry is not None:
                 entries[server["name"]] = entry
+            else:
+                # The URL is the credential. If it is now unset (rotated or
+                # revoked), an entry we wrote earlier still holds the OLD token,
+                # so leaving it in place would be worse than removing it.
+                stale.append(server["name"])
         else:
             warn("server '%s' skipped: unknown transport '%s'"
                  % (server.get("name"), transport))
+    existing = settings.get("mcpServers")
+    dropped = [n for n in stale
+               if isinstance(existing, dict) and n in existing]
+    if dropped:
+        remove_mcp_servers(settings, dropped)
+        for name in dropped:
+            warn("removed stale entry for skipped server '%s' (its URL env var "
+                 "is no longer set)" % name)
     merge_mcp_servers(settings, entries)
     merge_env(settings, ENV_KEY, ck_server_path)
     merge_env(settings, CAMBIUM_ENV_KEY, cambium_server_path)
@@ -322,7 +482,7 @@ def build_settings_install(settings, manifest, mapping, ck_server_path,
     # SessionEnd hook: fire cambium's distill() so capture is passive. Keyed by
     # its own marker under the SessionEnd event.
     merge_hooks(settings, distill_command, marker=DISTILL_HOOK_MARKER,
-                event="SessionEnd")
+                event="SessionEnd", timeout=DISTILL_HOOK_TIMEOUT)
     return settings
 
 
@@ -343,10 +503,15 @@ def build_settings_uninstall(settings, manifest):
 class Planner:
     """Collects intended file writes/removes; renders diffs or applies them."""
 
-    def __init__(self, dry_run):
+    def __init__(self, dry_run, state_path=None):
         self.dry_run = dry_run
         self.changes = []  # (path, old_text, new_text_or_None)
         self.warnings = []
+        self.state_path = state_path
+        self._state = None
+        # Set on uninstall: keep the bookkeeping for the backup decisions in
+        # this run, then drop the file so uninstall leaves nothing behind.
+        self.discard_state = False
 
     def warn(self, msg):
         self.warnings.append(msg)
@@ -359,6 +524,11 @@ class Planner:
             self.changes.append((path, read_text(path), None))
 
     def render(self):
+        """Human-facing preview. Credential-bearing URLs are masked: --dry-run
+        output is the thing people paste into issues and CI logs."""
+        return redact(self._render_raw())
+
+    def _render_raw(self):
         out = []
         for path, old, new in self.changes:
             if new is None:
@@ -380,8 +550,9 @@ class Planner:
         for path, old, new in self.changes:
             if new is None:
                 if os.path.exists(path):
-                    self._backup(path)
+                    self._backup(path, old, None)
                     os.remove(path)
+                    self._forget(path)
                     applied.append("removed %s" % path)
                 continue
             if old == new:
@@ -389,19 +560,81 @@ class Planner:
             parent = os.path.dirname(path)
             if parent and not os.path.isdir(parent):
                 os.makedirs(parent, exist_ok=True)
+            newline, has_bom = detect_style(path)
             if os.path.exists(path):
-                self._backup(path)
-            with open(path, "w", encoding="utf-8", newline="\n") as fh:
+                self._backup(path, old, new)
+            encoding = "utf-8-sig" if has_bom else "utf-8"
+            # newline=<nl> re-expands our "\n" text to the file's own convention
+            # so a CRLF file does not come back as an all-lines git diff.
+            with open(path, "w", encoding=encoding, newline=newline) as fh:
                 fh.write(new)
+            self._remember(path, new)
             applied.append("wrote %s" % path)
+        if self.discard_state:
+            self._state = {}
+        self._save_state()
         return applied
 
+    # -- last-written bookkeeping -------------------------------------------
+    # Backing up only on first write means a later hand edit (e.g. to the
+    # slash-command file, which we overwrite wholesale every run) is destroyed
+    # with no recoverable copy. We therefore record a hash of what we last wrote
+    # and back up whenever the on-disk content is neither that nor the new text.
+
+    def _load_state(self):
+        if self._state is None:
+            self._state = {}
+            if self.state_path and os.path.isfile(self.state_path):
+                try:
+                    self._state = json.loads(read_text(self.state_path)) or {}
+                except ValueError:
+                    self._state = {}
+        return self._state
+
     @staticmethod
-    def _backup(path):
+    def _digest(text):
+        return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+
+    def _remember(self, path, text):
+        self._load_state()[to_fwd(os.path.abspath(path))] = self._digest(text)
+
+    def _forget(self, path):
+        self._load_state().pop(to_fwd(os.path.abspath(path)), None)
+
+    def _save_state(self):
+        if not self.state_path or self._state is None:
+            return
+        if not self._state:
+            # Nothing left to track (e.g. after uninstall) -- leave no litter.
+            try:
+                if os.path.isfile(self.state_path):
+                    os.remove(self.state_path)
+            except OSError:
+                pass
+            return
+        parent = os.path.dirname(self.state_path)
+        try:
+            if parent and not os.path.isdir(parent):
+                os.makedirs(parent, exist_ok=True)
+            with open(self.state_path, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps(self._state, indent=2) + "\n")
+        except OSError:
+            pass  # bookkeeping is best-effort; never fail an install over it
+
+    def _backup(self, path, old, new):
         backup = path + BACKUP_SUFFIX
-        # Preserve the pristine original: back up only on the first write.
         if not os.path.exists(backup):
+            # Preserve the pristine original.
             shutil.copy2(path, backup)
+            return
+        if old == new:
+            return
+        last = self._load_state().get(to_fwd(os.path.abspath(path)))
+        if last is not None and self._digest(old) == last:
+            return  # exactly what we wrote last time -- nothing of the user's
+        # The on-disk content is neither our last write nor the new text, so it
+        # holds hand edits. Keep them alongside the pristine backup.
+        shutil.copy2(path, "%s.%d" % (backup, int(time.time())))
 
 
 # --------------------------------------------------------------------------
@@ -409,14 +642,18 @@ class Planner:
 # --------------------------------------------------------------------------
 
 def detect_claude_dir():
-    """Locate the Claude Code config directory across platforms."""
-    candidates = []
-    if os.name == "nt":
-        appdata = os.environ.get("APPDATA")
-        if appdata:
-            candidates.append(os.path.join(appdata, "Claude"))
+    """Locate the Claude Code config directory across platforms.
+
+    Claude Code uses ~/.claude on every platform, overridable via
+    CLAUDE_CONFIG_DIR. %APPDATA%\\Claude is Claude *Desktop's* config home and is
+    deliberately NOT probed -- writing Claude Code settings there configures
+    nothing and edits an unrelated app's file.
+    """
+    override = os.environ.get("CLAUDE_CONFIG_DIR")
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
     home = os.path.expanduser("~")
-    candidates.append(os.path.join(home, ".claude"))
+    candidates = [os.path.join(home, ".claude")]
 
     for cand in candidates:
         if os.path.isfile(os.path.join(cand, "settings.json")):
@@ -434,8 +671,24 @@ def load_manifest():
         return json.load(fh)
 
 
+def resolve_python():
+    """The interpreter to launch the stdio servers with.
+
+    The manifest used to hardcode "python3". That is wrong on a very common
+    Windows setup: `python3` resolves to the Microsoft Store shim while the
+    interpreter that actually has `mcp` installed is `python`. The servers got
+    registered into a config where they could never start, with no diagnostic.
+
+    sys.executable is the interpreter running this installer, so if you could
+    run the install, the servers can run -- and installing from a virtualenv
+    registers that virtualenv, which is almost always what you want.
+    """
+    return to_fwd(sys.executable or "python3")
+
+
 def build_mapping(project_dir):
     return {
+        "$PYTHON": resolve_python(),
         "$XYLEM_PARENT": to_fwd(PARENT),
         "$XYLEM_ROOT": to_fwd(ROOT),
         "$PROJECT_DIR": to_fwd(project_dir),
@@ -466,15 +719,32 @@ def plan(args):
     settings_path, claude_md_path, project_dir, commands_path = resolve_targets(
         args, claude_dir)
 
-    planner = Planner(args.dry_run)
+    planner = Planner(args.dry_run,
+                      state_path=os.path.join(claude_dir, ".xylem-state.json"))
 
-    settings = load_json_text(read_text(settings_path))
+    settings_text = read_text(settings_path)
+    indent = detect_json_indent(settings_text)
+    try:
+        settings = load_json_text(settings_text)
+    except ValueError as exc:
+        # A settings.json with // comments or a trailing comma is not strict
+        # JSON. Rewriting it would mean guessing at the user's intent, and
+        # crashing the whole run over it is worse than doing the other legs.
+        planner.warn(
+            "%s is not strict JSON (%s) -- leaving it untouched. Register the "
+            "Xylem servers and hooks by hand, or fix the file and re-run."
+            % (settings_path, exc))
+        settings = None
 
     if args.uninstall:
-        build_settings_uninstall(settings, manifest)
-        planner.set_text(settings_path, dump_json_text(settings))
+        planner.discard_state = True
+        if settings is not None:
+            build_settings_uninstall(settings, manifest)
+            planner.set_text(settings_path, dump_json_text(settings, indent))
         # CLAUDE.md: strip the fence only.
-        planner.set_text(claude_md_path, remove_fence(read_text(claude_md_path)))
+        planner.set_text(
+            claude_md_path,
+            remove_fence(read_text(claude_md_path), planner.warn))
         # Remove the slash command file entirely.
         planner.remove(commands_path)
         return planner
@@ -496,16 +766,18 @@ def plan(args):
         os.path.join(ROOT, "artifacts", "session_end_hook.py"))
     distill_command = '"%s" "%s"' % (to_fwd(sys.executable), distill_script)
 
-    build_settings_install(settings, manifest, mapping, ck_server_path,
-                           cambium_server_path, hook_command,
-                           version_check_command, distill_command,
-                           planner.warn)
-    planner.set_text(settings_path, dump_json_text(settings))
+    if settings is not None:
+        build_settings_install(settings, manifest, mapping, ck_server_path,
+                               cambium_server_path, hook_command,
+                               version_check_command, distill_command,
+                               planner.warn)
+        planner.set_text(settings_path, dump_json_text(settings, indent))
 
     block = read_text(os.path.join(ROOT, "artifacts", "claude_md_block.md"))
     version = manifest_version(manifest)
     planner.set_text(
-        claude_md_path, apply_fence(read_text(claude_md_path), block, version))
+        claude_md_path,
+        apply_fence(read_text(claude_md_path), block, version, planner.warn))
 
     discipline = read_text(os.path.join(ROOT, "artifacts", "xylem_discipline.md"))
     planner.set_text(commands_path, discipline)
@@ -554,7 +826,7 @@ def run_update(args):
 
     planner = plan(args)
     for msg in planner.warnings:
-        print("xylem: warning: %s" % msg, file=sys.stderr)
+        print("xylem: warning: %s" % redact(msg), file=sys.stderr)
 
     if args.dry_run:
         print("xylem: dry run -- no files will be written\n")
@@ -575,9 +847,23 @@ def run_update(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Install the Xylem suite into Claude Code.")
+    parser = argparse.ArgumentParser(
+        description="Install the Xylem suite into Claude Code. "
+                    "Previews by default; pass --apply to write.")
+    # Dry-run is the DEFAULT, matching install/xylem_install.py.
+    #
+    # These two installers used to ship opposite destructive defaults under the
+    # same filename -- `./install.sh` wrote immediately while
+    # `install/install.sh` only previewed. That is the kind of inconsistency
+    # that eventually costs someone their config. Both now preview by default
+    # and both need an explicit --apply.
+    #
+    # --dry-run is kept as an accepted no-op so every previously-documented
+    # command line still does exactly what it used to.
+    parser.add_argument("--apply", action="store_true",
+                        help="actually write the changes (default: preview only)")
     parser.add_argument("--dry-run", action="store_true",
-                        help="print exact diffs and write nothing")
+                        help="preview only -- now the default; accepted for compatibility")
     parser.add_argument("--uninstall", action="store_true",
                         help="remove only Xylem-owned entries")
     parser.add_argument("--project", metavar="PATH",
@@ -586,6 +872,13 @@ def main(argv=None):
                         help="'update': git pull the xylem repo, then re-apply the "
                              "block with the current version stamp")
     args = parser.parse_args(argv)
+
+    # Preview unless --apply. `--dry-run` is now redundant but still honored, so
+    # every command line printed in older docs keeps working unchanged.
+    args.dry_run = not args.apply
+    if not args.apply:
+        print("xylem: PREVIEW -- nothing will be written. Re-run with --apply to "
+              "make these changes.\n")
 
     if args.command == "update":
         if args.uninstall:
@@ -603,7 +896,7 @@ def main(argv=None):
         return 1
 
     for msg in planner.warnings:
-        print("xylem: warning: %s" % msg, file=sys.stderr)
+        print("xylem: warning: %s" % redact(msg), file=sys.stderr)
 
     if args.dry_run:
         print("xylem: dry run -- no files will be written\n")

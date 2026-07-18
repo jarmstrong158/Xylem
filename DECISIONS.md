@@ -6,6 +6,99 @@ Newest first. Each entry mirrors a context-keeper decision id; the canonical rec
 
 ---
 
+## dec-016 — Generate, don't copy: every duplicated artifact now has one source and a drift test
+*2026-07-18*
+
+An external audit found three bugs that were all the same bug: hand-maintained copies
+that drifted. `plugin/.mcp.json` was a hand-copy of `manifest.json`'s http servers and
+had drifted on **both** the server name (`agent-sync-remote` vs `agentsync-remote`,
+which silently broke every `mcp__agentsync-remote__*` reference in the habit prose on a
+plugin install) and the auth scheme (dec-014). The habit prose existed in three copies,
+and the plugin's had quietly lost the `update_status` cadence, the mailbox escalation
+rule, and "done means pushed to origin" — so plugin users got a strictly weaker
+discipline with no signal anything was missing. **Fix:** one source each
+(`artifacts/discipline.source.json`, `manifest.json`), rendered by
+`scripts/render_discipline.py`, with `tests/test_generated_sync.py` failing if any
+committed output drifts. Negative-tested: reintroducing both original bugs fails CI.
+**Lesson:** when the same fact lives in three files, the question isn't whether they'll
+drift, it's which one you'll ship wrong.
+
+## dec-015 — Both installers preview by default; `--apply` is required to write
+*2026-07-18*
+
+`./install.sh` at the repo root applied immediately while `install/install.sh`
+dry-ran by default. Two scripts, same filename, same repo, **opposite destructive
+defaults** — a footgun that was going to cost someone their config eventually. **Fix:**
+the root installer now previews by default and takes `--apply`, matching the suite
+installer. `--dry-run` is kept as an accepted no-op so every previously published
+command line still behaves identically. **Tradeoff:** a bare `./install.sh` no longer
+installs, which breaks muscle memory — accepted, because the failure mode is now a
+harmless preview instead of an unintended write.
+
+## dec-014 — Path-token auth is canonical; the plugin's Bearer headers were inert (supersedes dec-004)
+*2026-07-18*
+
+dec-004 added an `Authorization: Bearer` header to the remote servers, and dec-008
+carried "the header convention from dec-004" into `plugin/.mcp.json`. But the Workers
+had since moved to authenticating on the URL path alone — `manifest.json`,
+`install/README.md`, `docs/design-principles.md`, and an assertion in
+`tests/test_manifest.py` all said so. **That reversal was never recorded**, so the
+plugin kept shipping a header nobody reads and documented two `*_TOKEN` env vars that
+did nothing, misleading users into thinking they had configured auth. **Fix:** headers
+removed (now impossible to reintroduce — `.mcp.json` is generated, see dec-016), README
+corrected to two env vars, and the auth model documented in `docs/manifest.md`.
+**Lesson:** an unrecorded reversal is worse than an unrecorded decision — the stale
+record actively propagates.
+
+## dec-013 — `manifest.json` launches servers with `$PYTHON`, not `python3`
+*2026-07-18*
+
+The manifest hardcoded `python3` for all three stdio servers. On a very common Windows
+setup that resolves to the Microsoft Store shim while the interpreter that actually has
+`mcp` installed is `python` — reproduced on the author's own machine, where
+`python3 -c "import mcp"` fails and `python -c "import mcp"` succeeds. The installer
+was registering three servers into a config where they could never start, with no
+diagnostic. **Fix:** `$PYTHON` resolves to `sys.executable` — if you could run the
+installer, the servers can run, and installing from a virtualenv registers that
+virtualenv. The irony worth noting: `install.sh` already did correct `python3`→`python`
+discovery *with* a version check; it just never applied that care to the manifest.
+
+## dec-012 — The dashboard generator scrubs home directories from everything it publishes
+*2026-07-18*
+
+`xylem_dashboard.py` claimed in its own docstring that "nothing secret is ever written
+to the output," while emitting up to 600 characters of arbitrary release notes verbatim
+onto a public GitHub Pages site. The live page contained
+`C:\Users\<user>\repos\ollama` — a real username, published. **Fix:** a `scrub_text()`
+pass over every free-text field, a `--no-notes` flag, an honest docstring, and the
+committed `docs/dashboard.html` scrubbed in place. Also deleted
+`docs/dashboard.data.json`, a hand-written file that no code read and that the
+generator provably could not have produced — it looked like the dashboard's source and
+contradicted it. **Lesson:** "we only publish counts and summaries" stops being true
+the moment a summary is free text a human typed.
+
+## dec-011 — Hook ownership is explicit, not a filename substring match
+*2026-07-18*
+
+Uninstall identified Xylem's hooks by substring-matching generic filenames like
+`session_start_hook.py`. An unrelated tool's `/opt/othertool/session_start_hook.py` was
+silently deleted by both install and uninstall — directly violating the headline
+"additive, never clobbers foreign entries" claim. **Fix:** every hook group Xylem
+writes carries a `"_xylem": true` sentinel; legacy groups are still recognized by
+resolving under the xylem root, so nothing is orphaned. Now covered by an end-to-end
+test asserting a foreign hook survives install *and* uninstall.
+
+## dec-010 — The test suite runs in CI, on three platforms
+*2026-07-18*
+
+75 tests existed and nothing ran them: `.github/workflows/` contained only the
+dashboard refresh job. The README cited `tests/test_manifest.py` as a credibility
+signal, so a reviewer who went looking for a green check found none and reasonably
+concluded the tests were decorative. **Fix:** `tests.yml` runs `unittest discover` on
+ubuntu/macos/windows against Python 3.8 and 3.12 — the floor the installer claims and a
+current release — with no `pip install` step, so the stdlib-only constraint is enforced
+by the job itself rather than by good intentions.
+
 ## dec-009 — Plugin failed to LOAD despite passing validation: `manifest.hooks` double-loads the auto-loaded standard hooks file
 *2026-07-18*
 

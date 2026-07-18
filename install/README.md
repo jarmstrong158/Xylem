@@ -40,23 +40,39 @@ Zero dependencies: stdlib Python 3 only. macOS, Linux, Windows.
 
 2. See what would happen (writes nothing):
    ```sh
-   ./install.sh                       # macOS/Linux  (dry-run install)
-   .\install.ps1                      # Windows
+   install/install.sh                 # macOS/Linux  (dry-run install)
+   install\install.ps1                # Windows
    ```
 
 3. Apply it:
    ```sh
-   ./install.sh install --apply
-   .\install.ps1 install --apply
+   install/install.sh install --apply
+   install\install.ps1 install --apply
    ```
 
 Other commands:
 ```sh
-./install.sh list-agents             # which agents are detected here
-./install.sh install --only cursor,vscode
-./install.sh uninstall               # dry-run removal
-./install.sh uninstall --apply       # remove only what Xylem added
+install/install.sh list-agents             # which agents are detected here
+install/install.sh install --only cursor,vscode
+install/install.sh uninstall               # dry-run removal
+install/install.sh uninstall --apply       # remove only what Xylem added
+install/install.sh uninstall --apply --only cursor   # ...from one agent only
 ```
+
+> ### Two scripts named `install.sh` — same defaults, different jobs
+>
+> | Script | Default with no `--apply` | What it does |
+> |---|---|---|
+> | **`install/install.sh`** (this directory) | **PREVIEW** — writes nothing | Registers the servers across 7 editors |
+> | **`./install.sh`** at the repo root | **PREVIEW** — writes nothing | Claude Code only, plus the habit layer |
+>
+> Both preview by default and both need an explicit `--apply`. They used to ship
+> *opposite* destructive defaults under the same filename, which is exactly the
+> kind of thing that eventually costs someone their config; that is fixed.
+> `--dry-run` is still accepted by both, so older command lines are unchanged.
+>
+> The scripts in *this* directory also print a `=== Xylem installer: DRY-RUN … ===`
+> banner on startup so you can always see which mode you are in.
 
 ## What it touches
 
@@ -69,12 +85,24 @@ Detected agents and their MCP config files:
 | Windsurf | `~/.codeium/windsurf/mcp_config.json` | yes (`serverUrl`) |
 | VS Code | `…/Code/User/mcp.json` | yes (`type: http`) |
 | Claude Desktop | `…/Claude/claude_desktop_config.json` | no — add remote connectors via its UI; stdio servers are merged |
-| Zed | `~/.config/zed/settings.json` | no — stdio servers only |
+| Zed | `~/.config/zed/settings.json` | yes (`url`) |
 | GitHub Copilot CLI | `~/.copilot/mcp-config.json` (or `$COPILOT_HOME`) | yes (`type: http`) |
+
+Zed's `context_servers` entries are written in Zed's **current** shape — a flat
+`{"command": "<path>", "args": [...], "env": {...}}` for stdio (Zed's
+`ContextServerCommand` is `#[serde(flatten)]` with its `path` field renamed to
+`command`, so it is a string with sibling `args`, *not* a nested `{path, args}`
+object — that was the pre-2025-06-27 form), and `{"url": ...}` for remote HTTP.
+The `"source": "custom"` key that Zed used between 2025-06 and 2025-11 is
+obsolete — Zed's own migrator strips it — so the installer no longer emits it.
+Verified against `crates/settings_content/src/project.rs` and
+[zed.dev/docs/ai/mcp](https://zed.dev/docs/ai/mcp).
 
 ## Safety
 
-- **Dry-run is the default.** Nothing is written without `--apply`.
+- **Dry-run is the default.** Nothing is written without `--apply`. (The
+  repo-root `./install.sh` is a *different* script, but it now defaults to
+  preview too.)
 - **Backup before every change** (`<file>.bak-<timestamp>`).
 - **Never clobbers.** A server key that already exists and wasn't added by this
   installer is left untouched.
@@ -82,8 +110,31 @@ Detected agents and their MCP config files:
 - **Won't corrupt commented configs.** If a file isn't strict JSON (e.g. a Zed
   `settings.json` with comments), it is not rewritten — the exact snippet to paste
   is printed instead.
+- **Preserves your formatting.** The file's existing indent (2/4-space or tab)
+  and newline convention are detected and reused, so the installer only ever
+  touches the lines it actually changes.
 - **Surgical uninstall.** Removes only the entries recorded in the installer's
-  state file (`<config-home>/xylem/installer-state.json`).
+  state file (`<config-home>/xylem/installer-state.json`), and honours `--only`
+  so you can detach one agent without touching the rest.
+
+### Secret handling
+
+The remote Worker URL is itself the credential (the Workers authenticate on the
+`…/mcp/<token>` path alone), which makes the config files and their backups
+secret-bearing. Therefore:
+
+- Every config and backup the installer writes is `chmod 0600`. *(This is a
+  no-op on Windows, where `os.chmod` only toggles the read-only bit — Windows
+  users should rely on their profile-directory ACLs.)*
+- **All diff and warning output is redacted** to `.../mcp/<redacted>`. Dry-run
+  output is safe to paste into an issue; the real token still goes to disk.
+- **Backups are not hoarded.** Each `--apply` prunes this installer's own
+  `.bak-*` files once they are older than 30 days (always keeping the 3 most
+  recent), and `uninstall --apply` **deletes them outright** — an uninstall that
+  left a backup behind would leave a working credential behind.
+- `*.bak-*` is **not** currently covered by the repo `.gitignore` (only
+  `*.xylem-backup` is). These files are normally written outside the repo, but
+  if you point the installer at an in-repo config, add `*.bak-*` first.
 
 Adding a new agent is a new `Adapter(...)` entry in `xylem_install.py`; adding or
 re-transporting a server is a one-entry edit in `servers.json`.

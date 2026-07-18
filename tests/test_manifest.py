@@ -42,7 +42,13 @@ class ManifestTest(unittest.TestCase):
         for name, server in self.by_name.items():
             if server["transport"] != "stdio":
                 continue
-            self.assertEqual(server["command"], "python3", name)
+            # $PYTHON, not a bare "python3": on Windows `python3` routinely
+            # resolves to the Microsoft Store shim while the interpreter that
+            # actually has `mcp` installed is `python`, so the servers got
+            # registered into a config where they could never start. The
+            # installer resolves this to sys.executable -- if you could run the
+            # installer, the servers can run.
+            self.assertEqual(server["command"], "$PYTHON", name)
             self.assertIsInstance(server["args"], list, name)
             self.assertTrue(server["args"], name)
             # Path is a placeholder the installer resolves, not a real path yet.
