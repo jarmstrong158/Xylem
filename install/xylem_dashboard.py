@@ -123,6 +123,23 @@ def mmdd_from_iso(iso):
         return str(iso)[5:10]  # 'YYYY-MM-DD...' -> 'MM-DD'
 
 
+def ymd_from_iso(iso):
+    """Full 'YYYY-MM-DD' for the contributor detail view (falls back gracefully)."""
+    if not iso:
+        return ""
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+    except Exception:
+        return str(iso)[:10]
+
+
+def ymd_from_epoch(ct):
+    try:
+        return datetime.fromtimestamp(int(ct), tz=timezone.utc).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
 def attribute_repo(text, branch, known):
     """Best-effort: which repo a claim is about, matched from its task/branch."""
     hay = ((text or "") + " " + (branch or "")).lower()
@@ -215,8 +232,10 @@ def read_board_local(repo, branch, known):
             "repo": attribute_repo(task, rec["branch"], known),
             "who": agent,
             "when": mmdd_from_epoch(rec["last"]),
+            "on": ymd_from_epoch(rec["last"]),
             "status": status,
             "desc": (rec["note"] or "")[:150],
+            "note": (rec["note"] or "")[:600],
             "_sort": int(rec["last"]),
         })
     events.sort(key=lambda e: e["_sort"], reverse=True)
@@ -363,6 +382,11 @@ def read_context_remote(url, exclude=()):
 # a closing quote that is followed by either end-of-line or " (" — never anchor
 # the quote to end-of-string, or every release-with-a-note is silently dropped.
 _HIST_RE = re.compile(r"^agentsync:\s+(\S+)\s+(claims|releases)\s+'(.*?)'(?:\s+\(|\s*$)")
+# A release often appends a " (freeform completion note...)" after the quoted
+# task. This second, stricter pattern pulls that note out for the per-contributor
+# detail view. It is best-effort only — if it doesn't match, task parsing above is
+# unaffected and the note is simply absent.
+_HIST_NOTE_RE = re.compile(r"^agentsync:\s+\S+\s+(?:claims|releases)\s+'.*?'\s+\((.*)\)\s*$")
 
 
 def read_board_remote(url, known):
@@ -387,13 +411,18 @@ def read_board_remote(url, known):
             agent, action, task = m.group(1), m.group(2), m.group(3)
             date = cm.get("date", "") or ""
             rec = agg.setdefault((agent, task),
-                                 {"first": date, "last": date, "released": False})
+                                 {"first": date, "last": date, "released": False,
+                                  "note": "", "note_date": ""})
             if date > rec["last"]:
                 rec["last"] = date
             if date and date < rec["first"]:
                 rec["first"] = date
             if action == "releases":
                 rec["released"] = True
+                # keep the newest release's completion note for the detail view
+                nm = _HIST_NOTE_RE.match(cm.get("message", ""))
+                if nm and date >= rec["note_date"]:
+                    rec["note"], rec["note_date"] = nm.group(1).strip(), date
     except Exception as exc:
         warn("agentsync-remote history failed (%s)" % exc)
 
@@ -406,19 +435,24 @@ def read_board_remote(url, known):
         if (agent, task) not in agg:
             ts = c.get("updated_at", "")
             agg[(agent, task)] = {"first": ts, "last": ts,
-                                  "released": c.get("status") in ("done", "released")}
+                                  "released": c.get("status") in ("done", "released"),
+                                  "note": "", "note_date": ""}
 
     events = []
     for (agent, task), rec in agg.items():
         cur = current.get((agent, task))
         live = cur is not None and cur.get("status") not in ("done", "released")
+        # detail note: the live claim's own note, else the newest release note
+        note = ((cur or {}).get("note") or rec.get("note") or "")[:600]
         events.append({
             "t": task,
             "repo": attribute_repo(task, (cur or {}).get("branch"), known),
             "who": agent,
             "when": mmdd_from_iso(rec["last"]),
+            "on": ymd_from_iso(rec["last"]),
             "status": "live" if live else "done",
             "desc": ((cur or {}).get("note") or "")[:150],
+            "note": note,
             "_sort": rec["last"] or "",
         })
     events.sort(key=lambda e: e["_sort"], reverse=True)
