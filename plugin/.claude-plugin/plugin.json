@@ -6,6 +6,5 @@
   "homepage": "https://github.com/jarmstrong158/xylem",
   "repository": "https://github.com/jarmstrong158/xylem",
   "license": "MIT",
-  "hooks": "./hooks/hooks.json",
   "keywords": ["memory","coordination","multi-agent","decisions","knowledge","distillation","context","mcp"]
 }
