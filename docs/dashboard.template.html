@@ -229,7 +229,7 @@
 
   function esc(s){ const d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
   const STACK_VAR={xylem:'--xylem', cambium:'--cambium', 'context-keeper':'--ck', agentsync:'--agentsync'};
-  const repoVar=r=>STACK_VAR[r]||'--consumer';
+  const repoVar=r=>r==='unassigned'?'--faint':(STACK_VAR[r]||'--consumer');
   const rtagStyle=r=>`color:var(${repoVar(r)});background:color-mix(in srgb, var(${repoVar(r)}) 12%, transparent)`;
   const PEER_COLORS=['#9db4d6','#c9a3e6','#e0a45e','#37d399','#5b9dff','#f0b45e','#ff8fa3'];
   const peers=[]; events.forEach(e=>{ if(e.who && peers.indexOf(e.who)<0) peers.push(e.who); });
