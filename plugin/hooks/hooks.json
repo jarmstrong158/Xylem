@@ -1,0 +1,6 @@
+{
+  "hooks": {
+    "SessionStart": [ { "matcher": "", "hooks": [ { "type": "command", "command": "cat ${CLAUDE_PLUGIN_ROOT}/artifacts/discipline.md", "timeout": 10 } ] } ],
+    "SessionEnd":   [ { "matcher": "", "hooks": [ { "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/scripts/distill.sh", "timeout": 60 } ] } ]
+  }
+}
