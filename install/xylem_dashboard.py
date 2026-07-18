@@ -140,14 +140,17 @@ def ymd_from_epoch(ct):
         return ""
 
 
-def attribute_repo(text, branch, known):
-    """Best-effort: which repo a claim is about, matched from its task/branch."""
-    hay = ((text or "") + " " + (branch or "")).lower()
+def attribute_repo(text, branch, known, note=""):
+    """Best-effort: which repo a claim is about, matched from its task, branch, or
+    completion note. Falls back to 'unassigned' when nothing names a known repo —
+    a plain catch-all that also flags work that wasn't tagged to any repo (never a
+    made-up repo name)."""
+    hay = ((text or "") + " " + (branch or "") + " " + (note or "")).lower()
     # longest known name first so 'context-keeper-remote' wins over 'context-keeper'
     for name in sorted(known, key=len, reverse=True):
         if name.lower() in hay:
             return name
-    return "board"
+    return "unassigned"
 
 
 def active_count(entries):
@@ -229,7 +232,7 @@ def read_board_local(repo, branch, known):
         status = "done" if rec["status"] in ("done", "released") else "live"
         events.append({
             "t": task,
-            "repo": attribute_repo(task, rec["branch"], known),
+            "repo": attribute_repo(task, rec["branch"], known, rec["note"]),
             "who": agent,
             "when": mmdd_from_epoch(rec["last"]),
             "on": ymd_from_epoch(rec["last"]),
@@ -446,7 +449,7 @@ def read_board_remote(url, known):
         note = ((cur or {}).get("note") or rec.get("note") or "")[:600]
         events.append({
             "t": task,
-            "repo": attribute_repo(task, (cur or {}).get("branch"), known),
+            "repo": attribute_repo(task, (cur or {}).get("branch"), known, note),
             "who": agent,
             "when": mmdd_from_iso(rec["last"]),
             "on": ymd_from_iso(rec["last"]),
