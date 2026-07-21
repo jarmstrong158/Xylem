@@ -24,3 +24,4 @@ __pycache__/
 
 # Context-keeper local memory store (machine-local, never commit)
 .context/
+.cambium/
