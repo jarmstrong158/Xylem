@@ -6,6 +6,20 @@ Newest first. Each entry mirrors a context-keeper decision id; the canonical rec
 
 ---
 
+## dec-021 — installer: resolve $PYTHON in the stdio command, not just args/env
+*2026-07-21*
+
+`build_stdio_entry` applied the placeholder mapping to `args`/`env` but passed
+`server["command"]` through unresolved, writing a literal `"$PYTHON"` launch
+command. Claude Code doesn't expand `$PYTHON`, so the server fails to start.
+Latent because the live `settings.json` carried hand-written `"python3"` commands
+the installer had never overwritten — a fresh `xylem update` (rewriting entries
+from the manifest during the remote-config work) surfaced it live and would have
+broken all three stdio servers next session. **Fix:** resolve the command through
+the same mapping as args/env; repaired the live config by re-running the fixed
+update; +regression test asserting the built entry (a test had codified the raw
+manifest `"$PYTHON"` but nothing asserted the built entry).
+
 ## dec-020 — Thread 3 Tier A: the discipline stops telling remote agents to use cambium
 *2026-07-21*
 
