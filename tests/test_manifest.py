@@ -95,6 +95,32 @@ class ManifestTest(unittest.TestCase):
     def test_agentsync_branch_defaults_to_agentsync(self):
         self.assertEqual(self.by_name["agentsync"]["env"]["AGENTSYNC_BRANCH"], "agentsync")
 
+    def test_stdio_servers_declare_a_fetchable_source(self):
+        # Every stdio server must carry a `source` so a clean machine can clone
+        # it. The repo is stored as an owner/name slug (never a literal URL) so
+        # the no-hardcoded-URLs rule above still holds; the clone URL is built in
+        # code from that slug.
+        for name, server in self.by_name.items():
+            if server["transport"] != "stdio":
+                continue
+            source = server.get("source")
+            self.assertIsInstance(source, dict, name)
+            self.assertTrue(source.get("repo"), name)
+            self.assertTrue(source.get("dir"), name)
+            self.assertNotIn("://", source["repo"], name)
+            self.assertIn("ref", source, name)  # present (may be null) as a pin hook
+
+    def test_source_dir_matches_the_registered_script_path(self):
+        # Fetch clones into $XYLEM_PARENT/<source.dir>; registration resolves
+        # $XYLEM_PARENT/<segment>/... from args[0]. If these disagree the
+        # installer clones to one place and registers another. Guard the drift.
+        for name, server in self.by_name.items():
+            if server["transport"] != "stdio":
+                continue
+            arg = server["args"][0]
+            segment = arg.split("$XYLEM_PARENT/", 1)[1].split("/", 1)[0]
+            self.assertEqual(server["source"]["dir"], segment, name)
+
 
 if __name__ == "__main__":
     unittest.main()
