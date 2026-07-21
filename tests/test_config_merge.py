@@ -14,10 +14,26 @@ from installer import (  # noqa: E402
     merge_env,
     remove_env,
     build_settings_install,
+    build_stdio_entry,
     detect_json_indent,
     dump_json_text,
     redact,
 )
+
+
+class BuildStdioEntryTest(unittest.TestCase):
+    def test_resolves_python_placeholder_in_command(self):
+        # Regression: build_stdio_entry used to pass server["command"] through
+        # unresolved, writing a literal "$PYTHON" as the launch command, so the
+        # server failed to start (Claude Code does not expand $PYTHON).
+        entry = build_stdio_entry(
+            {"name": "x", "command": "$PYTHON",
+             "args": ["$XYLEM_PARENT/x/s.py"], "env": {"K": "$PROJECT_DIR"}},
+            {"$PYTHON": "/usr/bin/python3", "$XYLEM_PARENT": "/parent",
+             "$PROJECT_DIR": "/proj"})
+        self.assertEqual(entry["command"], "/usr/bin/python3")
+        self.assertEqual(entry["args"], ["/parent/x/s.py"])
+        self.assertEqual(entry["env"], {"K": "/proj"})
 
 XYLEM_ENTRIES = {
     "context-keeper": {"type": "stdio", "command": "python3", "args": ["ck.py"], "env": {}},
