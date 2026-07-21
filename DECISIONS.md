@@ -6,6 +6,23 @@ Newest first. Each entry mirrors a context-keeper decision id; the canonical rec
 
 ---
 
+## dec-019 — 1b: a shared session pointer so context-keeper and agentsync follow the session too
+*2026-07-21*
+
+Fix 1 made only cambium follow the session (via its own config file);
+context-keeper and agentsync stayed pinned to the frozen install-time
+`$PROJECT_DIR`, so they targeted the wrong project for every non-xylem session.
+**Fix:** the SessionStart primer hook now writes a shared pointer
+`~/.xylem/active_project.json` recording the session's project (written first,
+before the cambium logic, so it happens even when cambium is absent), and the
+manifest unpins `CONTEXT_KEEPER_PROJECT` and `AGENTSYNC_REPO`. context-keeper
+resolves the project per call (`env > pointer > cwd/.context`) and agentsync's
+`_cfg` falls back to the pointer when `AGENTSYNC_REPO` is unset — so all three
+servers now follow whichever project the session is in. Each keeps an
+explicit-env override to force a fixed project. **Tradeoff:** the pointer is
+global, so concurrent sessions in different projects race on it (fine for a solo
+operator); cambium keeps its own config-file mechanism rather than migrating.
+
 ## dec-018 — Automatic recall: a SessionStart primer hook + unpinning cambium from the frozen install project
 *2026-07-21*
 

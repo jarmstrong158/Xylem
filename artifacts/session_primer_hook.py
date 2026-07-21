@@ -83,6 +83,27 @@ def _session_repo():
     return ""
 
 
+def _active_project_file():
+    """Path to the shared Xylem session pointer (overridable for tests)."""
+    override = os.environ.get("XYLEM_ACTIVE_PROJECT_FILE")
+    if override:
+        return os.path.abspath(os.path.expanduser(override))
+    return os.path.join(os.path.expanduser("~"), ".xylem", "active_project.json")
+
+
+def _write_active_project(repo):
+    """Record the session's project in the shared Xylem pointer that
+    context-keeper and agentsync read per call, so the whole stack follows the
+    session's project — not just cambium. Best-effort; never raises."""
+    try:
+        path = _active_project_file()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"project": repo}, f)
+    except OSError:
+        pass
+
+
 def _load_server(server_path):
     server_dir = os.path.dirname(os.path.abspath(server_path))
     if server_dir not in sys.path:
@@ -136,11 +157,16 @@ def _format(parsed):
 
 
 def main():
+    # Record the session's project FIRST, independent of cambium: context-keeper
+    # and agentsync read this shared pointer per call to follow the session too.
+    repo = _session_repo()
+    if repo:
+        _write_active_project(repo)
+
     server_path = _resolve_server_path()
     if not server_path:
-        return 0  # cambium not wired — silent, nothing to prime
+        return 0  # cambium not wired — pointer still recorded above
 
-    repo = _session_repo()
     module = _load_server(server_path)
     if module is None:
         return 0
