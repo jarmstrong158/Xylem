@@ -10,6 +10,11 @@
       "transport": "stdio",
       "command": "$PYTHON",
       "args": ["$XYLEM_PARENT/context-keeper/server.py"],
+      "source": {
+        "repo": "jarmstrong158/context-keeper",
+        "dir": "context-keeper",
+        "ref": "v0.15.0"
+      },
       "env": {
         "CONTEXT_KEEPER_PROJECT": "$PROJECT_DIR"
       },
@@ -27,6 +32,11 @@
       "transport": "stdio",
       "command": "$PYTHON",
       "args": ["$XYLEM_PARENT/agentsync/agentsync_server.py"],
+      "source": {
+        "repo": "jarmstrong158/agentsync",
+        "dir": "agentsync",
+        "ref": "v0.1.0"
+      },
       "env": {
         "AGENTSYNC_REPO": "$PROJECT_DIR",
         "AGENTSYNC_AGENT_ID": "$AGENT_ID",
@@ -48,6 +58,11 @@
       "transport": "stdio",
       "command": "$PYTHON",
       "args": ["$XYLEM_PARENT/cambium/cambium_server.py"],
+      "source": {
+        "repo": "jarmstrong158/cambium",
+        "dir": "cambium",
+        "ref": "v0.1.0"
+      },
       "env": {
         "CAMBIUM_REPO": "$PROJECT_DIR",
         "CAMBIUM_AGENT_ID": "$AGENT_ID"

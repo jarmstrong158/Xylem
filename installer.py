@@ -799,6 +799,234 @@ def _run_git(git_args, cwd):
     return proc.returncode == 0, last
 
 
+# --------------------------------------------------------------------------
+# Server fetch: make a clean machine work
+# --------------------------------------------------------------------------
+# The stdio servers live in sibling repos ($XYLEM_PARENT/<dir>), not inside
+# this one. On the author's machine they are already checked out; on anyone
+# else's they are absent, so the installer would register three servers whose
+# script paths do not exist and which therefore die on launch with no
+# diagnostic. Fetch clones the missing ones to the exact path the manifest
+# resolves to, so what we clone and what we register can never drift.
+
+# Public source host. Overridable for forks/mirrors, but never carries a
+# secret (these are public repos), so unlike the Worker URLs it may be a literal
+# default. Kept out of manifest.json so the no-hardcoded-URLs rule there holds.
+DEFAULT_SOURCE_BASE = "https://github.com/"
+
+
+def clone_url(repo, base=None):
+    """Full git URL for a manifest `source.repo`.
+
+    A bare `owner/name` slug becomes `<base><owner/name>.git`; anything already
+    carrying a scheme or scp-style `git@` prefix is passed through untouched, so
+    a fork can pin a full URL if it wants. `base` defaults to $XYLEM_SOURCE_BASE
+    or the public GitHub host.
+    """
+    repo = (repo or "").strip()
+    if "://" in repo or repo.startswith("git@"):
+        return repo
+    if base is None:
+        base = os.environ.get("XYLEM_SOURCE_BASE") or DEFAULT_SOURCE_BASE
+    base = base.rstrip("/") + "/"
+    suffix = "" if repo.endswith(".git") else ".git"
+    return base + repo + suffix
+
+
+def server_script_path(server, mapping):
+    """Resolved path of a stdio server's entry script, or None if it has none."""
+    args = server.get("args") or []
+    if not args:
+        return None
+    return resolve_placeholders(args[0], mapping)
+
+
+def plan_fetch(manifest, mapping):
+    """Fetch plan: one entry per stdio server that declares a `source`.
+
+    Pure -- no network, no filesystem writes, only an existence probe -- so the
+    test suite can drive `needed` by pointing $XYLEM_PARENT at a temp dir. The
+    clone destination is derived from the SAME $XYLEM_PARENT as the registered
+    script path, so fetch cannot target a different directory than the manifest
+    resolves.
+    """
+    parent = mapping["$XYLEM_PARENT"]
+    actions = []
+    for server in enabled_servers(manifest):
+        if server.get("transport") != "stdio":
+            continue
+        source = server.get("source")
+        if not source or not source.get("repo") or not source.get("dir"):
+            continue
+        script = server_script_path(server, mapping)
+        actions.append({
+            "name": server["name"],
+            "repo": source["repo"],
+            "ref": source.get("ref"),
+            "dir": source["dir"],
+            "dest": to_fwd(os.path.join(parent, source["dir"])),
+            "script": script,
+            "needed": bool(script) and not os.path.isfile(script),
+        })
+    return actions
+
+
+def run_fetch(actions, apply, runner=_run_git, out=None, warn=None):
+    """Clone the servers marked `needed`. Fail-soft: a clone that fails warns
+    and lets the run continue (doctor and the launch itself will surface it),
+    exactly as the servers behaved before -- only now with a diagnostic.
+
+    Returns the list of human-facing lines emitted, so callers/tests can assert.
+    """
+    out = out or (lambda m: None)
+    warn = warn or (lambda m: None)
+    messages = []
+
+    def emit(msg):
+        messages.append(msg)
+        out(msg)
+
+    needed = [a for a in actions if a["needed"]]
+    if not needed:
+        return messages
+    for action in needed:
+        url = clone_url(action["repo"])
+        ref = action["ref"]
+        ref_note = (" @ %s" % ref) if ref else ""
+        if not apply:
+            emit("would clone %s%s -> %s" % (url, ref_note, action["dest"]))
+            continue
+        emit("cloning %s%s -> %s" % (url, ref_note, action["dest"]))
+        git_args = ["clone", "--depth", "1"]
+        if ref:
+            git_args += ["--branch", ref]
+        git_args += [url, action["dest"]]
+        ok, last = runner(git_args, None)
+        if ok:
+            emit("cloned %s" % action["name"])
+        else:
+            warn("could not clone %s (%s): %s -- install git or clone it "
+                 "manually into %s, then re-run" % (
+                     action["name"], url, last or "unknown error",
+                     action["dest"]))
+    return messages
+
+
+def fetch_servers(args, apply, out, warn):
+    """Resolve the mapping and clone any missing stdio server repos.
+
+    Shared by the install and update paths. A no-op when --no-fetch is passed.
+    """
+    if getattr(args, "no_fetch", False):
+        return
+    claude_dir = detect_claude_dir()
+    _, _, project_dir, _ = resolve_targets(args, claude_dir)
+    mapping = build_mapping(project_dir)
+    actions = plan_fetch(load_manifest(), mapping)
+    run_fetch(actions, apply=apply, out=out, warn=warn)
+
+
+# --------------------------------------------------------------------------
+# doctor: verify each registered server can actually start
+# --------------------------------------------------------------------------
+
+def _interpreter_has_mcp(python, runner=None):
+    """True if `python` can import the `mcp` SDK. Never raises, never hangs."""
+    if runner is not None:
+        return runner([python, "-c", "import mcp"])
+    try:
+        proc = subprocess.run(
+            [python, "-c", "import mcp"],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            universal_newlines=True, timeout=30)
+    except Exception:
+        return False
+    return proc.returncode == 0
+
+
+def _script_parses(path):
+    """True if `path` is syntactically valid Python. Compiles, never executes,
+    so it cannot hang on a server's stdio loop."""
+    try:
+        with open(path, "r", encoding="utf-8-sig") as fh:
+            compile(fh.read(), path, "exec")
+        return True
+    except (OSError, SyntaxError, ValueError):
+        return False
+
+
+def diagnose(manifest, mapping, python, has_mcp):
+    """Per-server health rows. Pure given its inputs: no launch, no network.
+
+    Each row is (name, ok, symbol, detail). stdio servers are healthy when their
+    script exists, parses, and the interpreter has `mcp`; http servers report
+    whether their URL env var is set (unset is a warning, not a failure -- the
+    remotes are optional).
+    """
+    rows = []
+    for server in enabled_servers(manifest):
+        name = server["name"]
+        transport = server.get("transport")
+        if transport == "stdio":
+            path = server_script_path(server, mapping)
+            if not path or not os.path.isfile(path):
+                rows.append((name, False, "FAIL",
+                             "server script not found: %s" % path))
+            elif not _script_parses(path):
+                rows.append((name, False, "FAIL",
+                             "server script has a syntax error: %s" % path))
+            elif not has_mcp:
+                rows.append((name, False, "FAIL",
+                             "interpreter %s cannot import 'mcp' (pip install "
+                             "mcp)" % python))
+            else:
+                rows.append((name, True, "OK", path))
+        elif transport == "http":
+            url_key = server.get("url_env_key")
+            if url_key and os.environ.get(url_key):
+                rows.append((name, True, "OK",
+                             "%s set (optional remote)" % url_key))
+            else:
+                rows.append((name, True, "WARN",
+                             "%s unset -- optional remote not registered"
+                             % url_key))
+        else:
+            rows.append((name, False, "FAIL",
+                         "unknown transport '%s'" % transport))
+    return rows
+
+
+def run_doctor(args):
+    """`installer.py doctor`: report whether each server can actually start.
+
+    Exit 0 only when every stdio (required) server is healthy; non-zero if any
+    is broken, so it is usable as a CI/post-install gate.
+    """
+    manifest = load_manifest()
+    claude_dir = detect_claude_dir()
+    _, _, project_dir, _ = resolve_targets(args, claude_dir)
+    mapping = build_mapping(project_dir)
+    python = resolve_python()
+    has_mcp = _interpreter_has_mcp(python)
+
+    rows = diagnose(manifest, mapping, python, has_mcp)
+    print("xylem doctor -- interpreter: %s (mcp: %s)\n"
+          % (python, "yes" if has_mcp else "NO"))
+    broken = 0
+    for name, ok, symbol, detail in rows:
+        print("  [%-4s] %-22s %s" % (symbol, name, redact(detail)))
+        if not ok:
+            broken += 1
+    print()
+    if broken:
+        print("xylem: %d server(s) will not start. Run the installer with "
+              "--apply to fetch missing servers, or fix the notes above."
+              % broken)
+        return 1
+    print("xylem: all servers healthy.")
+    return 0
+
+
 def run_update(args):
     """`installer.py update`: git pull the xylem repo, then re-apply the block.
 
@@ -823,6 +1051,14 @@ def run_update(args):
             print("xylem: %s" % last, file=sys.stderr)
 
     new_version = manifest_version(load_manifest())
+
+    # A machine that installed before this repo carried more servers -- or that
+    # only ever cloned Xylem -- gets the missing ones cloned now, so `update`
+    # heals a partial checkout instead of leaving dead server entries.
+    fetch_servers(
+        args, apply=not args.dry_run,
+        out=lambda m: print("xylem: %s" % redact(m)),
+        warn=lambda m: print("xylem: warning: %s" % redact(m), file=sys.stderr))
 
     planner = plan(args)
     for msg in planner.warnings:
@@ -868,10 +1104,21 @@ def main(argv=None):
                         help="remove only Xylem-owned entries")
     parser.add_argument("--project", metavar="PATH",
                         help="target the project's CLAUDE.md instead of the global one")
-    parser.add_argument("command", nargs="?", choices=["update"],
+    parser.add_argument("--no-fetch", action="store_true",
+                        help="do not clone missing stdio server repos "
+                             "(context-keeper, agentsync, cambium)")
+    parser.add_argument("command", nargs="?", choices=["update", "doctor"],
                         help="'update': git pull the xylem repo, then re-apply the "
-                             "block with the current version stamp")
+                             "block with the current version stamp. "
+                             "'doctor': report whether each server can start.")
     args = parser.parse_args(argv)
+
+    # doctor is read-only: it reports health and never writes, so it ignores the
+    # preview/--apply dance entirely and runs the same way every time.
+    if args.command == "doctor":
+        if args.uninstall:
+            parser.error("'doctor' cannot be combined with --uninstall")
+        return run_doctor(args)
 
     # Preview unless --apply. `--dry-run` is now redundant but still honored, so
     # every command line printed in older docs keeps working unchanged.
@@ -888,6 +1135,16 @@ def main(argv=None):
         except FileNotFoundError as exc:
             print("xylem: %s" % exc, file=sys.stderr)
             return 1
+
+    # Clone any missing stdio server repos before registering them, so a clean
+    # machine ends up with servers that actually start. Skipped on uninstall
+    # (nothing to fetch) and under --no-fetch. Previews as "would clone".
+    if not args.uninstall:
+        fetch_servers(
+            args, apply=args.apply,
+            out=lambda m: print("xylem: %s" % redact(m)),
+            warn=lambda m: print("xylem: warning: %s" % redact(m),
+                                 file=sys.stderr))
 
     try:
         planner = plan(args)

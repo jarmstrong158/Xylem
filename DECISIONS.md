@@ -6,6 +6,27 @@ Newest first. Each entry mirrors a context-keeper decision id; the canonical rec
 
 ---
 
+## dec-017 — Adoption: the installer bootstraps its own servers, pins them, and both install paths self-diagnose
+*2026-07-21*
+
+The stdio servers resolved to `$XYLEM_PARENT/<repo>` sibling dirs that only existed on
+the author's machine, so a fresh clone of just Xylem registered three MCP servers pointing
+at non-existent paths that died silently on launch — adoption was structurally impossible.
+**Fix, three parts:** (1) each stdio server gains a `source {repo, dir, ref}` block and the
+installer clones any missing server into the exact path the manifest resolves to — preview
+by default, `--apply` clones, `--no-fetch` skips, `XYLEM_SOURCE_BASE` retargets forks,
+fail-soft without git. (2) A `doctor` subcommand reports per-server startability without
+launching anything (script present + parses, interpreter imports `mcp`; remotes optional),
+non-zero exit if any required server is broken. (3) `ref` is pinned to each server's latest
+release tag (`v0.15.0`/`v0.1.0`/`v0.1.0`; main is only 1–3 commits ahead) so fresh installs
+get a reproducible, tested-together snapshot — bump on server releases. **Plugin path:** a
+plugin structurally can't clone Python stdio servers, and its `.mcp.json` is already
+correct, so the honest fix there was self-diagnosis, not local install — `primer.py` now
+prints a one-line notice when neither Worker URL is set (quiet the moment either is), the
+plugin-side equivalent of `doctor`. **Lesson:** "clone my six repos exactly like I have
+them" is not an install; the gap between an impressive repo and an adopted one is the
+~clean-machine bootstrap, not more features.
+
 ## dec-016 — Generate, don't copy: every duplicated artifact now has one source and a drift test
 *2026-07-18*
 

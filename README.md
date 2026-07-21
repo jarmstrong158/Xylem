@@ -149,21 +149,32 @@ Don't have the Workers yet? One click each:
 
 ### As a full local-first install — the habit layer
 
-Zero-dependency, stdlib Python 3.8+. This path wants the sibling server repos checked out alongside this one:
+Zero-dependency, stdlib Python 3.8+. Clone this repo and run the installer — it clones the sibling server repos (`context-keeper`, `agentsync`, `cambium`) for you on first `--apply`:
 
 ```sh
-mkdir xylem-stack && cd xylem-stack
-for r in Xylem context-keeper agentsync cambium; do
-  git clone https://github.com/jarmstrong158/$r
-done
+git clone https://github.com/jarmstrong158/Xylem
 cd Xylem
-./install.sh                  # preview: show exact diffs, write nothing
-./install.sh --apply          # apply
+./install.sh                  # preview: show exact diffs + which servers it will clone
+./install.sh --apply          # clone the servers, then wire everything up
 ```
 
 On Windows use `.\install.ps1` with the same flags.
 
+The servers are cloned as siblings of this repo (into the parent directory), which is exactly where the manifest resolves them. Already have them checked out? The clone step sees them and skips. Prefer to manage the checkouts yourself? Pass `--no-fetch` and clone them by hand. Point the installer at a fork or mirror with `XYLEM_SOURCE_BASE`.
+
 That run registers the enabled MCP servers in your Claude Code `settings.json`, injects the version-stamped habit block into `CLAUDE.md`, wires the three hooks, and installs the `/xylem-discipline` command. It's additive, backs up every file before its first write as `*.xylem-backup`, preserves your file's existing indentation and line endings, and is idempotent. Target one project's `CLAUDE.md` instead of the global one with `--project PATH`.
+
+**Verify it worked:** `./install.sh doctor` reports, per server, whether it can actually start — the stdio server's script is present and parses and your interpreter can import `mcp`; the optional remotes report whether their URL is set. It exits non-zero if any required server is broken, so it doubles as a post-install / CI gate.
+
+```text
+xylem doctor -- interpreter: /usr/bin/python3 (mcp: yes)
+
+  [OK  ] context-keeper         .../context-keeper/server.py
+  [OK  ] agentsync              .../agentsync/agentsync_server.py
+  [WARN] agentsync-remote       AGENTSYNC_REMOTE_URL unset -- optional remote not registered
+  [OK  ] cambium                .../cambium/cambium_server.py
+  [WARN] context-keeper-remote  CONTEXT_KEEPER_REMOTE_URL unset -- optional remote not registered
+```
 
 Both installers in this repo **preview by default and require `--apply` to write**. (They used to ship opposite defaults under the same filename; that's fixed. `--dry-run` is still accepted, so older command lines behave identically.)
 
