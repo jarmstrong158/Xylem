@@ -6,6 +6,19 @@ Newest first. Each entry mirrors a context-keeper decision id; the canonical rec
 
 ---
 
+## dec-022 — Discipline: cambium recall is on mobile now (revises dec-020's "local-only")
+*2026-07-21*
+
+Tier A (dec-020) made the discipline say cambium was local-only and unavailable on
+claude.ai/mobile — true then. `cambium-remote` is now deployed and connected: a read-only
+Cloudflare Worker serving `recall` over team + org knowledge (7 repos auto-discovered, 83
+items live), modeled on `agentsync-remote`. So the discipline was now telling a mobile
+agent recall is unavailable when it works. **Fix:** the `recall` rule states recall works
+on claude.ai/mobile via the cambium-remote connector (team + org); only **local** (personal,
+unpromoted) knowledge is desktop-only. The `distill` rule keeps **capture and promotion**
+(distill/promote) as desktop-only writes — the Worker is read-only by design. Regenerated
+the rendered outputs; deploys to the global CLAUDE.md via `xylem update`.
+
 ## dec-021 — installer: resolve $PYTHON in the stdio command, not just args/env
 *2026-07-21*
 
