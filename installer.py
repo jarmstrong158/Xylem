@@ -275,7 +275,10 @@ def build_stdio_entry(server, mapping):
     """Build a Claude Code stdio MCP server entry from a manifest server."""
     return {
         "type": "stdio",
-        "command": server["command"],
+        # Resolve placeholders in the command too ($PYTHON -> the real
+        # interpreter). Claude Code does not expand $PYTHON, so writing it
+        # literally makes the server fail to launch with a bare "$PYTHON".
+        "command": resolve_placeholders(server["command"], mapping),
         "args": resolve_placeholders(server.get("args", []), mapping),
         "env": resolve_placeholders(server.get("env", {}), mapping),
     }
