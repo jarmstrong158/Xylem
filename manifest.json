@@ -15,9 +15,8 @@
         "dir": "context-keeper",
         "ref": "v0.15.0"
       },
-      "env": {
-        "CONTEXT_KEEPER_PROJECT": "$PROJECT_DIR"
-      },
+      "env": {},
+      "note": "CONTEXT_KEEPER_PROJECT is deliberately NOT pinned to $PROJECT_DIR (that froze the server to the install-time project). context-keeper resolves the project per call (CONTEXT_KEEPER_PROJECT env > the shared Xylem session pointer the SessionStart hook writes > cwd/.context discovery), so it follows whichever project the session is in. Set CONTEXT_KEEPER_PROJECT to force a fixed project.",
       "artifacts": [
         "hooks/session_start",
         "hooks/pre_compact",
@@ -38,10 +37,10 @@
         "ref": "v0.1.0"
       },
       "env": {
-        "AGENTSYNC_REPO": "$PROJECT_DIR",
         "AGENTSYNC_AGENT_ID": "$AGENT_ID",
         "AGENTSYNC_BRANCH": "agentsync"
       },
+      "note": "AGENTSYNC_REPO is deliberately NOT pinned to $PROJECT_DIR. agentsync resolves the repo per call (AGENTSYNC_REPO env > the shared Xylem session pointer the SessionStart hook writes), so it coordinates whichever project the session is in. Set AGENTSYNC_REPO to force a fixed repo.",
       "artifacts": []
     },
     {

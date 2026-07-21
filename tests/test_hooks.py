@@ -438,6 +438,23 @@ class PrimerHookTest(unittest.TestCase):
         self.assertIn("NetSuite", out)
         self.assertIn("recall(", out)
 
+    def test_write_active_project_records_the_session_repo(self):
+        import json as _json
+        import tempfile
+        h = self._load()
+        ptr = os.path.join(tempfile.mkdtemp(), "active.json")
+        old = os.environ.get("XYLEM_ACTIVE_PROJECT_FILE")
+        os.environ["XYLEM_ACTIVE_PROJECT_FILE"] = ptr
+        try:
+            h._write_active_project("C:/some/proj")
+            with open(ptr, encoding="utf-8") as f:
+                self.assertEqual(_json.load(f)["project"], "C:/some/proj")
+        finally:
+            if old is None:
+                os.environ.pop("XYLEM_ACTIVE_PROJECT_FILE", None)
+            else:
+                os.environ["XYLEM_ACTIVE_PROJECT_FILE"] = old
+
     def test_output_is_ascii(self):
         # The digest goes to a possibly-cp1252 console; the renderer must not
         # introduce a non-encodable byte even from unicode content.
