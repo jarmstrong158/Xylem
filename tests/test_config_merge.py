@@ -97,7 +97,7 @@ class StaleHttpEntryTest(unittest.TestCase):
         build_settings_install(
             settings, HTTP_MANIFEST, mapping={}, ck_server_path="/x/ck.py",
             cambium_server_path="/x/cambium.py", hook_command="h",
-            version_check_command="v", distill_command="d",
+            version_check_command="v", distill_command="d", primer_command="p",
             warn=lambda m: None)
         return settings
 
@@ -126,7 +126,7 @@ class StaleHttpEntryTest(unittest.TestCase):
         build_settings_install(
             settings, HTTP_MANIFEST, mapping={}, ck_server_path="/x/ck.py",
             cambium_server_path="/x/cambium.py", hook_command="h",
-            version_check_command="v", distill_command="d",
+            version_check_command="v", distill_command="d", primer_command="p",
             warn=warnings.append)
         self.assertTrue(any("stale" in w for w in warnings))
 

@@ -6,6 +6,22 @@ Newest first. Each entry mirrors a context-keeper decision id; the canonical rec
 
 ---
 
+## dec-018 — Automatic recall: a SessionStart primer hook + unpinning cambium from the frozen install project
+*2026-07-21*
+
+A stack audit found the compound loop was half-open: `distill()` (capture) ran from the
+SessionEnd hook, but recall was advisory prose, so cambium got ignored at session start.
+Separately, the installer baked `$PROJECT_DIR` into `CAMBIUM_REPO`, freezing cambium to the
+install-time project — so recall/capture hit the wrong store for every other project.
+**Fix:** `artifacts/session_primer_hook.py` (SessionStart) injects cambium's new read-only
+`session_primer()` digest and resolves the session's real project from the payload `cwd`
+(not the hook's own cwd, which is the launch dir), writing `CAMBIUM_REPO` into cambium's
+config file so the per-call-resolving server follows the session — the only reliable way,
+since context-keeper/agentsync resolve their project once at startup. The manifest no longer
+pins `CAMBIUM_REPO`, letting that config value win. Installer-path only (the plugin is
+remote-only and cambium has no remote). **Deferred:** context-keeper/agentsync are still
+startup-pinned; making them follow the session needs a per-call resolution change.
+
 ## dec-017 — Adoption: the installer bootstraps its own servers, pins them, and both install paths self-diagnose
 *2026-07-21*
 

@@ -59,6 +59,10 @@ DISTILL_HOOK_TIMEOUT = 60
 # The SessionEnd hook that fires cambium's distill() -- the capture leg of the
 # compound-growth loop. Keyed by its own script-name marker like the others.
 DISTILL_HOOK_MARKER = "session_end_hook.py"
+# SessionStart hook that injects cambium's session_primer() (the recall leg).
+PRIMER_HOOK_MARKER = "session_primer_hook.py"
+# Primer reads local + team + org (a couple of git fetches), so give it headroom.
+PRIMER_HOOK_TIMEOUT = 30
 # settings.json env keys we own. The first points the SessionStart hook at
 # context-keeper's server.py; the second points the SessionEnd hook at cambium.
 ENV_KEY = "XYLEM_CONTEXT_KEEPER_PATH"
@@ -444,7 +448,8 @@ def all_server_names(manifest):
 
 def build_settings_install(settings, manifest, mapping, ck_server_path,
                            cambium_server_path, hook_command,
-                           version_check_command, distill_command, warn):
+                           version_check_command, distill_command,
+                           primer_command, warn):
     """Apply every Xylem install transform to a settings dict (in place)."""
     entries = {}
     stale = []
@@ -479,6 +484,10 @@ def build_settings_install(settings, manifest, mapping, ck_server_path,
     # register independently and neither clobbers the other on re-run.
     merge_hooks(settings, hook_command)
     merge_hooks(settings, version_check_command, marker=VERSION_CHECK_MARKER)
+    # SessionStart hook: inject cambium's session_primer() so RECALL is passive,
+    # the mirror of the SessionEnd distill capture leg. Its own marker.
+    merge_hooks(settings, primer_command, marker=PRIMER_HOOK_MARKER,
+                timeout=PRIMER_HOOK_TIMEOUT)
     # SessionEnd hook: fire cambium's distill() so capture is passive. Keyed by
     # its own marker under the SessionEnd event.
     merge_hooks(settings, distill_command, marker=DISTILL_HOOK_MARKER,
@@ -490,6 +499,7 @@ def build_settings_uninstall(settings, manifest):
     remove_mcp_servers(settings, all_server_names(manifest))
     remove_hooks(settings)
     remove_hooks(settings, marker=VERSION_CHECK_MARKER)
+    remove_hooks(settings, marker=PRIMER_HOOK_MARKER)
     remove_hooks(settings, marker=DISTILL_HOOK_MARKER, event="SessionEnd")
     remove_env(settings, ENV_KEY)
     remove_env(settings, CAMBIUM_ENV_KEY)
@@ -765,12 +775,16 @@ def plan(args):
     distill_script = to_fwd(
         os.path.join(ROOT, "artifacts", "session_end_hook.py"))
     distill_command = '"%s" "%s"' % (to_fwd(sys.executable), distill_script)
+    # SessionStart primer hook -- the recall leg, same pattern as the others.
+    primer_script = to_fwd(
+        os.path.join(ROOT, "artifacts", "session_primer_hook.py"))
+    primer_command = '"%s" "%s"' % (to_fwd(sys.executable), primer_script)
 
     if settings is not None:
         build_settings_install(settings, manifest, mapping, ck_server_path,
                                cambium_server_path, hook_command,
                                version_check_command, distill_command,
-                               planner.warn)
+                               primer_command, planner.warn)
         planner.set_text(settings_path, dump_json_text(settings, indent))
 
     block = read_text(os.path.join(ROOT, "artifacts", "claude_md_block.md"))
