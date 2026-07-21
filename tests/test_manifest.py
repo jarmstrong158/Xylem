@@ -108,7 +108,18 @@ class ManifestTest(unittest.TestCase):
             self.assertTrue(source.get("repo"), name)
             self.assertTrue(source.get("dir"), name)
             self.assertNotIn("://", source["repo"], name)
-            self.assertIn("ref", source, name)  # present (may be null) as a pin hook
+            self.assertIn("ref", source, name)  # present as a pin hook
+
+    def test_stdio_servers_are_pinned_to_a_release_tag(self):
+        # Fresh installs must resolve a reproducible, tested-together snapshot
+        # rather than whatever each server's main happens to be mid-refactor.
+        # Bump these refs when the servers cut new releases.
+        for name, server in self.by_name.items():
+            if server["transport"] != "stdio":
+                continue
+            ref = server["source"]["ref"]
+            self.assertIsInstance(ref, str, name)
+            self.assertRegex(ref, r"^v\d+\.\d+", name)
 
     def test_source_dir_matches_the_registered_script_path(self):
         # Fetch clones into $XYLEM_PARENT/<source.dir>; registration resolves

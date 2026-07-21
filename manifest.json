@@ -13,7 +13,7 @@
       "source": {
         "repo": "jarmstrong158/context-keeper",
         "dir": "context-keeper",
-        "ref": null
+        "ref": "v0.15.0"
       },
       "env": {
         "CONTEXT_KEEPER_PROJECT": "$PROJECT_DIR"
@@ -35,7 +35,7 @@
       "source": {
         "repo": "jarmstrong158/agentsync",
         "dir": "agentsync",
-        "ref": null
+        "ref": "v0.1.0"
       },
       "env": {
         "AGENTSYNC_REPO": "$PROJECT_DIR",
@@ -61,7 +61,7 @@
       "source": {
         "repo": "jarmstrong158/cambium",
         "dir": "cambium",
-        "ref": null
+        "ref": "v0.1.0"
       },
       "env": {
         "CAMBIUM_REPO": "$PROJECT_DIR",
