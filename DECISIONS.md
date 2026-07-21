@@ -6,6 +6,20 @@ Newest first. Each entry mirrors a context-keeper decision id; the canonical rec
 
 ---
 
+## dec-020 — Thread 3 Tier A: the discipline stops telling remote agents to use cambium
+*2026-07-21*
+
+cambium has no remote Worker, but the shared discipline (rendered to CLAUDE.md AND the
+plugin/remote `discipline.md`) unconditionally told every agent to `recall()`/`distill()`/
+`promote()` from cambium — so a claude.ai/mobile agent was instructed to call tools that
+don't exist there. **Fix:** the `recall` and `distill` rules now state cambium is
+local-only and, on claude.ai/mobile, to lean on context-keeper's summary / `get_context` /
+`record_*` instead — mirroring the `mailbox` rule's existing "if that Worker is configured,
+otherwise…" conditional pattern, so one canonical source stays honest on both the desktop
+and remote paths. This is the honesty tier of Thread 3; the config tier (set
+`CONTEXT_KEEPER_REMOTE_URL`, authorize connectors, set `default_project`) and the deferred
+build tier (an actual cambium Worker) are separate.
+
 ## dec-019 — 1b: a shared session pointer so context-keeper and agentsync follow the session too
 *2026-07-21*
 

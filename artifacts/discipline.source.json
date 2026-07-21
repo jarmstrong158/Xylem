@@ -27,7 +27,7 @@
       "id": "recall",
       "title": "Recall what the team already learned",
       "lead": "Before starting work",
-      "body": "`recall()` relevant knowledge from cambium for the task at hand -- past outcomes, gotchas, and decisions distilled from prior sessions -- so you build on what the team already learned instead of rediscovering it."
+      "body": "on a local session, `recall()` relevant knowledge from cambium for the task at hand -- past outcomes, gotchas, and decisions distilled from prior sessions -- so you build on what the team already learned instead of rediscovering it. cambium is local-only (it has no remote Worker), so on claude.ai / mobile it is unavailable: lean on the injected context-keeper summary and `get_context` there instead."
     },
     {
       "id": "work",
@@ -51,7 +51,7 @@
       "id": "distill",
       "title": "Capture (mostly automatic)",
       "lead": "As work completes",
-      "body": "capture is passive: cambium's `distill()` runs from the SessionEnd hook, turning done agentsync claims and context-keeper decisions into memory. If that hook is not installed, run `distill()` yourself as work lands, and `promote()` knowledge that has earned recalls so the team and org see it."
+      "body": "on a local session, capture is passive: cambium's `distill()` runs from the SessionEnd hook, turning done agentsync claims and context-keeper decisions into memory. If that hook is not installed, run `distill()` yourself as work lands, and `promote()` knowledge that has earned recalls so the team and org see it. cambium is local-only, so on claude.ai / mobile there is no distill/promote -- record decisions via context-keeper's `record_*` and the next local session's distill catches up."
     }
   ],
   "block_footer": "Run `/xylem-discipline` to load the full workflow for a session.",
