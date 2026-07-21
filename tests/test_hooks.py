@@ -19,6 +19,7 @@ from installer import (  # noqa: E402
 COMMAND = '"python" "/x/artifacts/session_start_hook.py"'
 VERSION_CHECK_COMMAND = '"python" "/x/artifacts/version_check.py"'
 DISTILL_COMMAND = '"python" "/x/artifacts/session_end_hook.py"'
+PRIMER_COMMAND = '"python" "/x/artifacts/session_primer_hook.py"'
 
 
 class HooksTest(unittest.TestCase):
@@ -371,7 +372,8 @@ class BuildSettingsDistillTest(unittest.TestCase):
             settings, self.MANIFEST, mapping={}, ck_server_path="/x/ck.py",
             cambium_server_path="/x/cambium/cambium_server.py",
             hook_command=COMMAND, version_check_command=VERSION_CHECK_COMMAND,
-            distill_command=DISTILL_COMMAND, warn=lambda m: None)
+            distill_command=DISTILL_COMMAND, primer_command=PRIMER_COMMAND,
+            warn=lambda m: None)
         return settings
 
     def test_install_registers_distill_hook_under_session_end(self):
@@ -379,12 +381,22 @@ class BuildSettingsDistillTest(unittest.TestCase):
         groups = settings["hooks"]["SessionEnd"]
         commands = [h["command"] for g in groups for h in g["hooks"]]
         self.assertIn(DISTILL_COMMAND, commands)
-        # SessionStart still carries the two original hooks.
+        # SessionStart carries the summary + version-check + the primer hook.
         ss_commands = [h["command"]
                        for g in settings["hooks"]["SessionStart"]
                        for h in g["hooks"]]
         self.assertIn(COMMAND, ss_commands)
         self.assertIn(VERSION_CHECK_COMMAND, ss_commands)
+        self.assertIn(PRIMER_COMMAND, ss_commands)
+
+    def test_uninstall_removes_the_primer_hook(self):
+        settings = self._install()
+        # sanity: present after install
+        ss = [h["command"] for g in settings["hooks"]["SessionStart"]
+              for h in g["hooks"]]
+        self.assertIn(PRIMER_COMMAND, ss)
+        build_settings_uninstall(settings, self.MANIFEST)
+        self.assertNotIn("hooks", settings)   # primer gone with the rest
 
     def test_install_sets_cambium_env(self):
         settings = self._install()
@@ -397,6 +409,44 @@ class BuildSettingsDistillTest(unittest.TestCase):
         # Every Xylem hook and env key gone.
         self.assertNotIn("hooks", settings)
         self.assertNotIn("env", settings)
+
+
+class PrimerHookTest(unittest.TestCase):
+    """The SessionStart primer hook renders a digest and fails soft."""
+
+    @staticmethod
+    def _load():
+        import importlib.util
+        path = os.path.join(ROOT, "artifacts", "session_primer_hook.py")
+        spec = importlib.util.spec_from_file_location("xylem_primer_hook", path)
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        return m
+
+    def test_format_renders_items_and_assumptions(self):
+        h = self._load()
+        parsed = {
+            "project": "proj", "known_items": 2,
+            "known": [{"scope": "local", "content": "a fact", "recalls": 3}],
+            "check_assumptions": [{"content": "billing on NetSuite",
+                                   "valid_while": "while on NetSuite"}],
+        }
+        out = h._format(parsed)
+        self.assertIn("cambium knows 2 item(s) for proj", out)
+        self.assertIn("a fact", out)
+        self.assertIn("recalls=3", out)
+        self.assertIn("NetSuite", out)
+        self.assertIn("recall(", out)
+
+    def test_output_is_ascii(self):
+        # The digest goes to a possibly-cp1252 console; the renderer must not
+        # introduce a non-encodable byte even from unicode content.
+        h = self._load()
+        out = h._format({"project": "p", "known_items": 1,
+                         "known": [{"scope": "local",
+                                    "content": "em—dash", "recalls": 0}],
+                         "check_assumptions": []})
+        h._ascii(out).encode("ascii")  # must not raise
 
 
 if __name__ == "__main__":

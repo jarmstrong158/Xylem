@@ -64,9 +64,9 @@
         "ref": "v0.1.0"
       },
       "env": {
-        "CAMBIUM_REPO": "$PROJECT_DIR",
         "CAMBIUM_AGENT_ID": "$AGENT_ID"
       },
+      "note": "CAMBIUM_REPO is deliberately NOT pinned to $PROJECT_DIR: that froze cambium to the install-time project. cambium resolves its repo per call (env > config-file > cwd), and the SessionStart session_primer_hook writes the session's real project into cambium's config file, so the running server follows whatever project the session is in. Set CAMBIUM_REPO in the env only to force a fixed project.",
       "artifacts": []
     },
     {
