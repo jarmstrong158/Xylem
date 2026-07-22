@@ -6,7 +6,7 @@
 
 **Xylem gives AI coding agents durable memory, decentralized coordination, and a knowledge lifecycle — and makes them use it by default.**
 
-Three local-first MCP servers, each with a Cloudflare Worker that speaks the identical protocol. Because the transports match, your phone is a full peer in the mesh: it can claim work, survey what your desktop is doing, and answer a question the desktop is blocked on.
+Three local-first MCP servers, each with a Cloudflare Worker that speaks the identical protocol. Because the transports match, your phone is a full peer in the mesh: it can claim work, survey what your desktop is doing, recall the team's distilled knowledge, and answer a question the desktop is blocked on.
 
 It's for engineers running more than one agent against the same repo, where decisions evaporate between sessions and two agents clobber each other's files.
 
@@ -23,7 +23,7 @@ It's for engineers running more than one agent against the same repo, where deci
 
 ## The repo map
 
-The stack is six repos. This one is the hub — it installs the others and carries the habit layer.
+The stack is seven repos. This one is the hub — it installs the others and carries the habit layer.
 
 | Repo | Role | Transport |
 |---|---|---|
@@ -33,6 +33,7 @@ The stack is six repos. This one is the hub — it installs the others and carri
 | [agentsync](https://github.com/jarmstrong158/agentsync) | Claim/release coordination board | local stdio |
 | [agentsync-remote](https://github.com/jarmstrong158/agentsync-remote) | Same board via GitHub Contents API, plus `mailbox` | remote http |
 | [cambium](https://github.com/jarmstrong158/cambium) | Knowledge lifecycle over the other two | local stdio |
+| [cambium-remote](https://github.com/jarmstrong158/cambium-remote) | Read-only `recall()` of team + org knowledge, auto-discovering repos | remote http |
 
 ## The tools
 
@@ -62,9 +63,11 @@ It's textual, not semantic — it tells you two files won't merge, not that an A
 
 Its stated limit: claims completed *and* re-claimed between distill runs can be lost, a deliberate trade of completeness for simplicity.
 
+**On the phone (cambium-remote).** A read-only Cloudflare Worker serves `recall()` over **team + org** knowledge to claude.ai, so the lesson the team already learned reaches you on mobile — not just your desktop. It reads the same `cambium` team branches and the org repo through the GitHub Contents API, and it **auto-discovers** which repos have been team-promoted rather than carrying a static list, so a growing knowledge base needs no reconfiguration. Recall is the whole surface on mobile: local (personal, unpromoted) scope and the write side — `distill()` and `promote()` — stay desktop-only.
+
 ## Architecture
 
-Two transports, one set of protocols. Desktop agents speak local stdio MCP and use `git push` as a compare-and-swap; claude.ai on mobile speaks the same protocols over HTTPS through Cloudflare Workers (the GitHub Contents API for coordination, D1 for memory). Both write the *same* files, so the transport is invisible to the logic above it.
+Two transports, one set of protocols. Desktop agents speak local stdio MCP and use `git push` as a compare-and-swap; claude.ai on mobile speaks the same protocols over HTTPS through Cloudflare Workers (the GitHub Contents API for coordination and knowledge recall, D1 for memory). Both write the *same* files, so the transport is invisible to the logic above it. The one asymmetry is deliberate: knowledge recall reaches mobile read-only, while the writes that grow the knowledge base — `distill()` and `promote()` — stay on the desktop.
 
 ```mermaid
 flowchart TB
@@ -97,6 +100,8 @@ flowchart TB
     CLAIMS -. "distill()" .-> KLOCAL
     KLOCAL -- "3 recalls / endorse" --> KTEAM
     KTEAM -- "endorse + review" --> KORG
+    MOB -. "recall() read-only<br/>GitHub Contents API<br/>(auto-discovered repos)" .-> KTEAM
+    MOB -. "recall() read-only" .-> KORG
 ```
 
 The blob-sha compare-and-swap the remote Worker gets from the GitHub Contents API maps 1:1 onto the push-based CAS the local server gets from git — which is why a phone and a desktop can share one `claims.json` without a central server ever arbitrating between them.
@@ -142,10 +147,13 @@ Ships seven skills, the `SessionStart`/`SessionEnd` hooks, and the two **remote*
 
 The plugin path is remote-only: it does **not** install the local stdio servers, and it has no local memory if you haven't deployed the Workers. [plugin/README.md](plugin/README.md) has the full comparison table.
 
+A third Worker, **cambium-remote**, is read-only and stateless, so it isn't wired into the plugin's env: you add its `.../mcp/<token>` URL directly as a custom connector on claude.ai to get team + org `recall()` on mobile. It needs a GitHub token (`GH_PAT`) plus `ORG_REPO` and `TEAM_OWNER` set on the Worker; see [cambium-remote](https://github.com/jarmstrong158/cambium-remote) for its config.
+
 Don't have the Workers yet? One click each:
 
 [![Deploy context-keeper-remote](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/jarmstrong158/context-keeper-remote)
 [![Deploy agentsync-remote](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/jarmstrong158/agentsync-remote)
+[![Deploy cambium-remote](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/jarmstrong158/cambium-remote)
 
 ### As a full local-first install — the habit layer
 
