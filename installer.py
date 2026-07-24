@@ -1059,13 +1059,155 @@ def _script_parses(path):
         return False
 
 
-def diagnose(manifest, mapping, python, has_mcp):
-    """Per-server health rows. Pure given its inputs: no launch, no network.
+# --------------------------------------------------------------------------
+# The MCP initialize handshake
+# --------------------------------------------------------------------------
+# doctor used to report "all servers healthy" for servers it had never started.
+# It checked three things -- the file exists, compile() accepts it, and the
+# interpreter can `import mcp` -- and none of those is the question the user is
+# asking. A server whose module raises at import, whose required env var is
+# missing, whose own dependency is absent, or which crashes before it can speak
+# MCP passes all three and is reported OK. That is verification that does not
+# verify, and it is the failure this whole codebase keeps repeating.
+#
+# So: actually launch it and complete a real handshake.
 
-    Each row is (name, ok, symbol, detail). stdio servers are healthy when their
-    script exists, parses, and the interpreter has `mcp`; http servers report
-    whether their URL env var is set (unset is a warning, not a failure -- the
-    remotes are optional).
+HANDSHAKE_TIMEOUT = 20  # seconds per server; a hung server must not hang doctor
+MCP_PROTOCOL_VERSION = "2024-11-05"
+
+CLIENT_INFO = {"name": "xylem-doctor", "version": "1"}
+
+
+def _handshake_payload():
+    """The bytes a client sends to open an MCP session, newline-delimited JSON.
+
+    MCP's stdio transport is one JSON-RPC message per line. We send the
+    `initialize` request and the `notifications/initialized` that follows it in
+    a single write, then close stdin: the server answers, sees EOF, and exits on
+    its own. That is what lets a single communicate() call carry a hard timeout
+    with no reader thread and no possibility of deadlocking on a server that
+    says nothing.
+    """
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": MCP_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": CLIENT_INFO,
+        },
+    }
+    initialized = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+    return json.dumps(request) + "\n" + json.dumps(initialized) + "\n"
+
+
+def parse_initialize_response(stdout):
+    """(ok, detail) from a server's stdout during the handshake.
+
+    Looks for the JSON-RPC reply to id 1. A JSON-RPC *error* reply is a failure
+    with the server's own message, which is far more useful than "unhealthy":
+    the server is telling you what it needs.
+    """
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue  # servers log freely on stdout before the transport opens
+        try:
+            message = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(message, dict) or message.get("id") != 1:
+            continue
+        if "error" in message:
+            error = message["error"] or {}
+            return False, "server refused initialize: %s" % (
+                error.get("message") or json.dumps(error))
+        result = message.get("result")
+        if not isinstance(result, dict):
+            continue
+        info = result.get("serverInfo") or {}
+        name = info.get("name") or "unnamed server"
+        version = info.get("version")
+        protocol = result.get("protocolVersion") or "unknown"
+        return True, "handshake OK -- %s%s (MCP %s)" % (
+            name, " v%s" % version if version else "", protocol)
+    return False, ""
+
+
+def mcp_handshake(command, args, env=None, timeout=HANDSHAKE_TIMEOUT, cwd=None):
+    """Spawn a stdio MCP server and complete an `initialize` handshake.
+
+    Returns (ok, detail). Never raises: every failure mode a user can hit --
+    the interpreter is missing, the module raises at import, a required env var
+    is unset, the process hangs, it exits without speaking MCP -- comes back as
+    a row with a reason.
+    """
+    child_env = dict(os.environ)
+    child_env.update(env or {})
+    # The server inherits the doctor's stdin otherwise, and an interactive
+    # terminal would keep a misbehaving server alive past the timeout.
+    try:
+        proc = subprocess.Popen(
+            [command] + list(args),
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, universal_newlines=True,
+            env=child_env, cwd=cwd)
+    except OSError as exc:
+        return False, "could not launch: %s" % exc
+
+    try:
+        stdout, stderr = proc.communicate(_handshake_payload(), timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        return False, ("no response to initialize within %ds -- the server "
+                       "started but never spoke MCP" % timeout)
+    except Exception as exc:  # pragma: no cover - defensive
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        return False, "handshake failed: %s" % exc
+
+    ok, detail = parse_initialize_response(stdout)
+    if ok:
+        return True, detail
+    if detail:
+        return False, detail
+
+    # No initialize reply at all. The server's own stderr is the diagnosis --
+    # a traceback, a missing env var, an ImportError -- so surface its last
+    # meaningful line rather than inventing a summary.
+    note = _last_meaningful_line(stderr) or _last_meaningful_line(stdout)
+    reason = "exited %s" % proc.returncode if proc.returncode else "no initialize reply"
+    return False, "%s%s" % (reason, ": %s" % note if note else "")
+
+
+def _last_meaningful_line(text):
+    """The last non-blank line of a stream, trimmed for one-line reporting."""
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    if not lines:
+        return ""
+    last = lines[-1]
+    return last if len(last) <= 200 else last[:197] + "..."
+
+
+def diagnose(manifest, mapping, python, has_mcp, handshake=mcp_handshake):
+    """Per-server health rows: (name, ok, symbol, detail).
+
+    A stdio server is healthy when it LAUNCHES and completes an MCP
+    `initialize` handshake -- not when its file happens to parse. The cheap
+    checks are kept, but only as better error messages: a missing script or a
+    syntax error is reported as itself rather than as a failed handshake.
+
+    http servers still report whether their URL env var is set, without a
+    network call: an unset URL is a warning (the remotes are optional) and
+    reaching out to a Worker would make doctor's exit code depend on the
+    network.
+
+    `handshake` is injectable so the suite can drive every outcome without
+    spawning real servers; run_doctor uses the real one.
     """
     rows = []
     for server in enabled_servers(manifest):
@@ -1084,7 +1226,10 @@ def diagnose(manifest, mapping, python, has_mcp):
                              "interpreter %s cannot import 'mcp' (pip install "
                              "mcp)" % python))
             else:
-                rows.append((name, True, "OK", path))
+                args = resolve_placeholders(server.get("args", []), mapping)
+                env = resolve_placeholders(server.get("env", {}), mapping)
+                ok, detail = handshake(python, args, env)
+                rows.append((name, ok, "OK" if ok else "FAIL", detail))
         elif transport == "http":
             url_key = server.get("url_env_key")
             if url_key and os.environ.get(url_key):
@@ -1101,7 +1246,11 @@ def diagnose(manifest, mapping, python, has_mcp):
 
 
 def run_doctor(args):
-    """`installer.py doctor`: report whether each server can actually start.
+    """`installer.py doctor`: report whether each server actually starts.
+
+    Every stdio server is launched and taken through a real MCP `initialize`
+    handshake -- doctor previously reported "all servers healthy" for servers it
+    had never run, on the strength of the file existing and compiling.
 
     Exit 0 only when every stdio (required) server is healthy; non-zero if any
     is broken, so it is usable as a CI/post-install gate.
@@ -1123,11 +1272,15 @@ def run_doctor(args):
             broken += 1
     print()
     if broken:
-        print("xylem: %d server(s) will not start. Run the installer with "
+        print("xylem: %d server(s) failed to start. Run the installer with "
               "--apply to fetch missing servers, or fix the notes above."
               % broken)
         return 1
-    print("xylem: all servers healthy.")
+    # Say what was actually verified. "healthy" without a qualifier is how the
+    # old check got away with never launching anything.
+    started = sum(1 for _, _, symbol, _ in rows if symbol == "OK")
+    print("xylem: all servers healthy (%d completed an MCP initialize "
+          "handshake or are configured remotes)." % started)
     return 0
 
 

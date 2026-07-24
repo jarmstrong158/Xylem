@@ -172,17 +172,21 @@ The servers are cloned as siblings of this repo (into the parent directory), whi
 
 That run registers the enabled MCP servers in your Claude Code `settings.json`, injects the version-stamped habit block into `CLAUDE.md`, wires the three hooks, and installs the `/xylem-discipline` command. It's additive, backs up every file before its first write as `*.xylem-backup`, preserves your file's existing indentation and line endings, and is idempotent. Target one project's `CLAUDE.md` instead of the global one with `--project PATH`.
 
-**Verify it worked:** `./install.sh doctor` reports, per server, whether it can actually start — the stdio server's script is present and parses and your interpreter can import `mcp`; the optional remotes report whether their URL is set. It exits non-zero if any required server is broken, so it doubles as a post-install / CI gate.
+**Verify it worked:** `./install.sh doctor` **launches each stdio server and completes a real MCP `initialize` handshake**, reporting the name and version the server itself announced. It used to check only that the script existed, compiled, and that your interpreter could `import mcp` — all three of which a server that cannot start still passes, so "all servers healthy" was a claim about files rather than servers. The optional remotes report whether their URL is set (no network call: doctor's exit code should not depend on your connection). It exits non-zero if any required server fails to start, so it doubles as a post-install / CI gate.
 
 ```text
 xylem doctor -- interpreter: /usr/bin/python3 (mcp: yes)
 
-  [OK  ] context-keeper         .../context-keeper/server.py
-  [OK  ] agentsync              .../agentsync/agentsync_server.py
+  [OK  ] context-keeper         handshake OK -- context-keeper v0.15.0 (MCP 2024-11-05)
+  [OK  ] agentsync              handshake OK -- agentsync v1.27.0 (MCP 2024-11-05)
   [WARN] agentsync-remote       AGENTSYNC_REMOTE_URL unset -- optional remote not registered
-  [OK  ] cambium                .../cambium/cambium_server.py
+  [OK  ] cambium                handshake OK -- cambium v1.27.0 (MCP 2024-11-05)
   [WARN] context-keeper-remote  CONTEXT_KEEPER_REMOTE_URL unset -- optional remote not registered
+
+xylem: all servers healthy (3 completed an MCP initialize handshake or are configured remotes).
 ```
+
+A server that is present and compiles but cannot start — an unset required env var, a missing dependency, a module that raises at import — now reports the server's own error message rather than `OK`.
 
 Both installers in this repo **preview by default and require `--apply` to write**. (They used to ship opposite defaults under the same filename; that's fixed. `--dry-run` is still accepted, so older command lines behave identically.)
 
