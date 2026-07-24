@@ -87,3 +87,41 @@ def resolve_python(get=None):
 def needs_resolution(command):
     """True if `command` is a placeholder/bare name rather than a real path."""
     return str(command or "").strip() in UNRESOLVED_COMMANDS
+
+
+# --------------------------------------------------------------------------- #
+# static launch commands (the plugin path, where nothing runs at install time)
+# --------------------------------------------------------------------------- #
+# installer.py can resolve a real interpreter path because it is a program that
+# runs on the target machine. The PLUGIN has no install step at all -- Claude
+# Code reads plugin/hooks/hooks.json verbatim -- so the launch command must be
+# static, and a static command cannot contain a resolved path.
+#
+# It must therefore not contain a bare name either, which is what dec-013 is
+# about. There is no single bare name that is right everywhere:
+#
+#   * on a very common Windows box, `python3` is the Microsoft Store shim: it
+#     prints "Python was not found" and exits NON-ZERO, while `python` is the
+#     interpreter that actually works;
+#   * on most Linux/macOS boxes it is the exact reverse -- only `python3`
+#     exists and `python` is absent.
+#
+# A fallback chain is the one form that survives both, and it works precisely
+# because the failure modes above are non-zero exits. `A || B` is valid in
+# cmd.exe and in POSIX sh with the same semantics, so one string covers every
+# platform Claude Code runs a hook on.
+#
+# The chain is only safe for a script that exits 0 on every path (both plugin
+# hook scripts do, deliberately) -- otherwise a script that merely returned
+# non-zero would be run a second time.
+LAUNCH_CHAIN = ("python3", "python")
+
+
+def launch_command(script):
+    """A static, platform-agnostic shell command that runs `script` with Python.
+
+    `script` is inserted verbatim (it is a build-time constant such as
+    "${CLAUDE_PLUGIN_ROOT}/scripts/primer.py") and is quoted, because plugin
+    roots contain spaces on Windows more often than not.
+    """
+    return " || ".join('%s "%s"' % (name, script) for name in LAUNCH_CHAIN)

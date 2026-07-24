@@ -35,6 +35,10 @@ OUT_COMMAND = os.path.join(ROOT, "artifacts", "xylem_discipline.md")
 OUT_PLUGIN = os.path.join(ROOT, "plugin", "artifacts", "discipline.md")
 OUT_MCP = os.path.join(ROOT, "plugin", ".mcp.json")
 OUT_SERVERS = os.path.join(ROOT, "install", "servers.json")
+OUT_PLUGIN_HOOKS = os.path.join(ROOT, "plugin", "hooks", "hooks.json")
+
+sys.path.insert(0, ROOT)
+import xylem_interpreter  # noqa: E402  (repo-root sibling module)
 
 GENERATED_NOTE = (
     "GENERATED FILE -- do not edit by hand. "
@@ -250,6 +254,46 @@ def render_servers(manifest):
     return json.dumps(payload, indent=2) + "\n"
 
 
+PLUGIN_HOOKS = [
+    ("SessionStart", "scripts/primer.py", 10),
+    ("SessionEnd", "scripts/distill.py", 60),
+]
+
+PLUGIN_HOOKS_COMMENT = (
+    "GENERATED FILE -- do not edit by hand. Source: scripts/render_discipline.py "
+    "(launch commands from xylem_interpreter.launch_command). Regenerate: "
+    "python scripts/render_discipline.py --write. "
+    "Each command is an interpreter FALLBACK CHAIN, not a bare name. The plugin "
+    "has no install step -- Claude Code reads this file verbatim -- so the "
+    "command cannot carry a resolved interpreter path, and dec-013 is about why "
+    "it must not carry a bare name either: on a very common Windows box "
+    "`python3` is the Microsoft Store shim (prints a notice, exits non-zero) "
+    "while `python` works, and on most Linux/macOS boxes only `python3` exists. "
+    "`A || B` means the same thing in cmd.exe and POSIX sh, and the non-zero "
+    "exit is what makes the chain fall through to a real interpreter. Both hook "
+    "scripts exit 0 on every path, so a chain can never run one of them twice."
+)
+
+
+def render_plugin_hooks():
+    """plugin/hooks/hooks.json, with launch commands from the shared policy.
+
+    This file shipped `python "..."` -- the exact bare-name bug dec-013
+    documents, reintroduced on the plugin path, where it is silent: a
+    SessionStart hook that fails to launch produces no primer and no error.
+    """
+    hooks = {}
+    for event, script, timeout in PLUGIN_HOOKS:
+        command = xylem_interpreter.launch_command(
+            "${CLAUDE_PLUGIN_ROOT}/" + script
+        )
+        hooks[event] = [
+            {"hooks": [{"type": "command", "command": command, "timeout": timeout}]}
+        ]
+    payload = {"$comment": PLUGIN_HOOKS_COMMENT, "hooks": hooks}
+    return json.dumps(payload, indent=2) + "\n"
+
+
 # --------------------------------------------------------------------------
 
 
@@ -263,6 +307,7 @@ def outputs():
         (OUT_PLUGIN, render_plugin(src)),
         (OUT_MCP, render_mcp(manifest)),
         (OUT_SERVERS, render_servers(manifest)),
+        (OUT_PLUGIN_HOOKS, render_plugin_hooks()),
     ]
 
 

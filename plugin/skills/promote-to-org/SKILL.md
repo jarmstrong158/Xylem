@@ -1,6 +1,6 @@
 ---
 name: promote-to-org
-description: "used for 'promote this to the org', 'make this a universal practice', 'review promotions'. cambium review_promotions, then promote ONE AT A TIME through the generalization gate (restate project-specific bodies via org-content) and endorsement gate; serialize PRs."
+description: "used for 'promote this to the org', 'make this a universal practice', 'review promotions'. Calls cambium's `review_promotions` MCP tool, then promotes ONE AT A TIME through the generalization gate (restate project-specific bodies via org-content) and endorsement gate; serialize PRs."
 metadata:
   version: "0.1.0"
 ---
@@ -12,9 +12,11 @@ careful — org knowledge is read by every project, so it must be general and en
 
 ## Steps
 
-1. Check for cambium. If `cambium` is not on PATH, say so and stop.
+1. Check for cambium. cambium is an **MCP server**, not a command-line program — there
+   is no `cambium` executable on PATH. If its tools are not available in this session,
+   say so and stop.
 
-2. `cambium review_promotions` to list team-scope candidates ready for org promotion.
+2. Call `review_promotions` to list team-scope candidates ready for org promotion.
    Note anything flagged `org_needs_generalization` — those carry project-specific detail
    that must be rewritten before they go org-wide.
 

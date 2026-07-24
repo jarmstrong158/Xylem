@@ -1,6 +1,6 @@
 ---
 name: recall-knowledge
-description: "used for cross-project questions: 'what does the org know about X', 'any universal practice for Y'. Runs `cambium recall \"<query>\"` against the federated org brain; distinct from recall-context (project-local). Surfaces scope + endorsed_as."
+description: "used for cross-project questions: 'what does the org know about X', 'any universal practice for Y'. Calls cambium's `recall` MCP tool against the federated org brain; distinct from recall-context (project-local). Surfaces scope + endorsed_as."
 metadata:
   version: "0.1.0"
 ---
@@ -12,11 +12,15 @@ distilled and promoted across every project, not just this repo.
 
 ## Steps
 
-1. Check for cambium. If `cambium` is not on PATH, say so and stop — this skill needs it.
-   Point the user at the cambium repo.
+1. Check for cambium. cambium is an **MCP server**, not a command-line program — there
+   is no `cambium` executable on PATH. If the `recall` tool is not available in this
+   session, say so and stop; point the user at the local installer, which registers the
+   cambium server (the plugin alone does not ship it).
 
-2. Run `cambium recall "<query>"` with a focused query for the topic. This searches the
-   federated knowledge that has been promoted to team and org scope across projects.
+2. Call `recall` with a focused query for the topic. This searches the federated
+   knowledge that has been promoted to team and org scope across projects. On claude.ai
+   and mobile the same call goes through the cambium-remote connector (team + org scope
+   only; local scope stays desktop-only).
 
 3. Report each hit with its provenance:
    - the knowledge itself,
