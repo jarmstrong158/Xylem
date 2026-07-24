@@ -6,6 +6,54 @@ Newest first. Each entry mirrors a context-keeper decision id; the canonical rec
 
 ---
 
+## dec-024 — Every duplicated artifact is generated, including the two the guard missed
+*2026-07-24*
+
+dec-016 declared hand-copy drift "structurally impossible" on the strength of four
+generated outputs. `install/servers.json` was a **third** hand-maintained copy of the
+server declarations sitting outside those four, and it had drifted exactly as predicted:
+long after both were fixed everywhere else it still declared `"command": "python3"` (the
+Microsoft Store shim on Windows, dec-013) and still pinned `CONTEXT_KEEPER_PROJECT` /
+`AGENTSYNC_REPO` / `CAMBIUM_REPO`, freezing each server to the install-time project that
+every manifest note explains it must not be frozen to. Separately `plugin/hooks/hooks.json`
+launched with a bare `python` — dec-013 reintroduced on the plugin path, where it is
+*silent*: a SessionStart hook that never launches produces no primer and no error. And the
+two installers resolved the interpreter by **opposite** strategies (`sys.executable` vs
+`shutil.which("python3")` first), so dec-013 could only ever be half-applied.
+**Fix:** servers.json and hooks.json are the fifth and sixth outputs of
+`scripts/render_discipline.py`, derived mechanically from `manifest.json`; the interpreter
+policy lives in one module, `xylem_interpreter.py`, that both installers call. The plugin
+has no install step, so its hook commands carry a fallback chain (`A || B`, identical in
+cmd.exe and POSIX sh) instead of a resolved path — safe only because both hook scripts exit
+0 on every path, which is now a test. Negative-tested: reintroducing the `python3` command
+and the repo pin fails four assertions. **Lesson:** a drift guard only guards what it
+renders, so "we generate our artifacts now" is a claim about `outputs()`, not about the repo.
+
+## dec-023 — Verification has to exercise the thing it verifies
+*2026-07-24*
+
+The same bug three times, each one presenting as a clean, well-handled success.
+`doctor` reported **"all servers healthy" for servers it had never launched** — it checked
+file-exists, `compile()`, and `import mcp`, all three of which a server that cannot start
+still passes. `plugin/scripts/distill.py` shelled `["cambium", "distill"]` behind a
+`shutil.which("cambium")` guard, and **no such executable has ever existed** (cambium ships
+`cambium-mcp`, an MCP stdio server with no argparse), so the guard never passed, the hook
+printed a tidy skip line every session, and the capture leg of the compound-growth loop was
+a permanent no-op — with three of the seven shipped skills documenting the same imaginary
+CLI. `docs/versioning.md` described a fetch rate limiter — off by default, once per 24h,
+3-second timeout — that **did not exist**: the fetch defaulted on, ran with a 10s timeout,
+and kept no cache, doing unbounded network I/O on every SessionStart inside a 10s budget.
+**Fix:** doctor spawns each stdio server and completes a real MCP `initialize` handshake,
+reporting the name and version the server itself announced (verified against context-keeper
+v0.15.0, agentsync v1.27.0, cambium v1.27.0); distill.py calls `cambium_server.distill()` in
+a child interpreter (killable, unlike an import); the rate limiter was implemented rather
+than the doc weakened. Also: `install/xylem_dashboard.py` — 735 lines, zero tests, a daily
+cron with `contents: write` against two live Worker secrets, one prior PII leak (dec-012) —
+now has 41 tests weighted at the redaction path, mutation-checked by emptying
+`_HOME_PATTERNS` (57 assertions go red). **Lesson:** if the check would still pass when the
+thing is broken, it is not a check. And when a doc and the code disagree about a safety
+property, the doc is usually the considered design and the code the accident.
+
 ## dec-022 — Discipline: cambium recall is on mobile now (revises dec-020's "local-only")
 *2026-07-21*
 
