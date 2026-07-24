@@ -34,6 +34,7 @@ OUT_BLOCK = os.path.join(ROOT, "artifacts", "claude_md_block.md")
 OUT_COMMAND = os.path.join(ROOT, "artifacts", "xylem_discipline.md")
 OUT_PLUGIN = os.path.join(ROOT, "plugin", "artifacts", "discipline.md")
 OUT_MCP = os.path.join(ROOT, "plugin", ".mcp.json")
+OUT_SERVERS = os.path.join(ROOT, "install", "servers.json")
 
 GENERATED_NOTE = (
     "GENERATED FILE -- do not edit by hand. "
@@ -154,6 +155,101 @@ def render_mcp(manifest):
     return json.dumps(payload, indent=2) + "\n"
 
 
+SERVERS_COMMENT = (
+    "GENERATED FILE -- do not edit by hand. Source: manifest.json. "
+    "Regenerate: python scripts/render_discipline.py --write. "
+    "This is the server manifest install/xylem_install.py reads (the multi-agent "
+    "install path). It used to be a THIRD hand-maintained copy of the server "
+    "declarations, outside the drift guard, and it drifted exactly as you would "
+    "expect: long after both were fixed everywhere else it still said "
+    "command 'python3' (the Microsoft Store shim on Windows -- see dec-013) and "
+    "still pinned CONTEXT_KEEPER_PROJECT / AGENTSYNC_REPO / CAMBIUM_REPO, which "
+    "freezes each server to the install-time project. To add a server or flip a "
+    "transport, edit manifest.json. ${NAME} placeholders are resolved at install "
+    "time from environment variables (which win) or the untracked "
+    "xylem.config.json; no absolute paths, URLs, or secrets live here."
+)
+
+
+def server_key(name):
+    """The xylem.config.json key holding the path to a server's entry script.
+
+    install/xylem_install.py addresses the server scripts by an absolute path
+    the user configures (${CONTEXT_KEEPER_SERVER}), where installer.py addresses
+    them relative to the checkout ($XYLEM_PARENT/context-keeper/server.py). Two
+    legitimate conventions -- the derivation from the manifest name is what keeps
+    them one declaration rather than two.
+    """
+    return name.upper().replace("-", "_") + "_SERVER"
+
+
+def render_servers(manifest):
+    """install/servers.json, derived from manifest.json.
+
+    The env mapping is fully mechanical, which is the point -- there is nothing
+    here a human can quietly get wrong:
+
+      * an $AGENT_ID-valued manifest env key becomes a REQUIRED config key
+        (each agent must identify itself; there is no sane default);
+      * every key in the server's `config_env` becomes an OPTIONAL passthrough
+        knob;
+      * a manifest env key with a literal value is an installer.py-path default
+        and is NOT copied -- if it is meant to be user-settable here, it belongs
+        in `config_env` (AGENTSYNC_BRANCH is, and so appears as a knob).
+
+    The *_PROJECT / *_REPO keys cannot reappear: they are neither $AGENT_ID-valued
+    nor listed in any config_env, and the manifest notes explain why pinning them
+    is wrong.
+    """
+    servers = []
+    for decl in manifest["servers"]:
+        if not decl.get("available", True):
+            continue
+        name = decl["name"]
+        if decl.get("transport") == "http":
+            key = decl["url_env_key"]
+            servers.append(
+                {
+                    "name": name,
+                    "transport": "http",
+                    "url": "${%s}" % key,
+                    "required": [key],
+                }
+            )
+            continue
+
+        key = server_key(name)
+        required = [key]
+        env = {}
+        for env_key, value in decl.get("env", {}).items():
+            if value == "$AGENT_ID":
+                env[env_key] = "${%s}" % env_key
+                required.append(env_key)
+        for env_key in decl.get("config_env", []):
+            env.setdefault(env_key, "${%s}" % env_key)
+
+        servers.append(
+            {
+                "name": name,
+                "transport": "stdio",
+                # Not a bare "python3": xylem_interpreter.needs_resolution()
+                # treats "$PYTHON" as "resolve a real interpreter", which is the
+                # single policy both installers now share.
+                "command": "$PYTHON",
+                "args": ["${%s}" % key],
+                "env": env,
+                "required": required,
+            }
+        )
+
+    payload = {
+        "_comment": SERVERS_COMMENT,
+        "version": manifest["version"],
+        "servers": servers,
+    }
+    return json.dumps(payload, indent=2) + "\n"
+
+
 # --------------------------------------------------------------------------
 
 
@@ -166,6 +262,7 @@ def outputs():
         (OUT_COMMAND, render_command(src)),
         (OUT_PLUGIN, render_plugin(src)),
         (OUT_MCP, render_mcp(manifest)),
+        (OUT_SERVERS, render_servers(manifest)),
     ]
 
 

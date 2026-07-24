@@ -2,7 +2,7 @@
   "$schema": "https://xylem.local/manifest.schema.json",
   "version": 4,
   "description": "Xylem suite server declarations -- the SINGLE source of truth for which servers exist and how they launch. installer.py consumes this directly; install/servers.json is GENERATED from it by scripts/render_discipline.py (it used to be a third hand-maintained copy and drifted: it still said command 'python3' and still pinned CONTEXT_KEEPER_PROJECT / AGENTSYNC_REPO / CAMBIUM_REPO long after both were fixed everywhere else). The installer resolves $PYTHON (the interpreter running the installer), $XYLEM_ROOT (this repo), $XYLEM_PARENT (its parent, i.e. the sibling repos directory), $PROJECT_DIR, and $AGENT_ID placeholders, and reads all url values from environment variables. No URLs or secrets are ever stored in this file.",
-  "config_env_note": "Per-server 'config_env' lists OPTIONAL user knobs that install/xylem_install.py passes through from xylem.config.json / the environment. They are deliberately knobs only -- the *_PROJECT and *_REPO keys are NOT here, because pinning them freezes a server to the install-time project (see each server's note). A user who really wants a fixed project sets that variable in their own environment; the server inherits it at launch.",
+  "config_env_note": "Per-server 'config_env' lists OPTIONAL user knobs that install/xylem_install.py passes through from xylem.config.json / the environment. They are deliberately knobs only -- the *_PROJECT and *_REPO keys are NOT here, because pinning them freezes a server to the install-time project (see each server's note). A user who really wants a fixed project sets that variable in their own environment; the server inherits it at launch. install/servers.json's env blocks are generated from this list plus any $AGENT_ID-valued env key (which becomes a required config key there).",
   "target": "claude-code",
   "servers": [
     {
@@ -17,6 +17,7 @@
         "ref": "v0.15.0"
       },
       "env": {},
+      "config_env": [],
       "note": "CONTEXT_KEEPER_PROJECT is deliberately NOT pinned to $PROJECT_DIR (that froze the server to the install-time project). context-keeper resolves the project per call (CONTEXT_KEEPER_PROJECT env > the shared Xylem session pointer the SessionStart hook writes > cwd/.context discovery), so it follows whichever project the session is in. Set CONTEXT_KEEPER_PROJECT to force a fixed project.",
       "artifacts": [
         "hooks/session_start",
@@ -41,6 +42,12 @@
         "AGENTSYNC_AGENT_ID": "$AGENT_ID",
         "AGENTSYNC_BRANCH": "agentsync"
       },
+      "config_env": [
+        "AGENTSYNC_REMOTE",
+        "AGENTSYNC_BRANCH",
+        "AGENTSYNC_PARTNER_GITHUB",
+        "AGENTSYNC_STALE_HOURS"
+      ],
       "note": "AGENTSYNC_REPO is deliberately NOT pinned to $PROJECT_DIR. agentsync resolves the repo per call (AGENTSYNC_REPO env > the shared Xylem session pointer the SessionStart hook writes), so it coordinates whichever project the session is in. Set AGENTSYNC_REPO to force a fixed repo.",
       "artifacts": []
     },
@@ -66,6 +73,15 @@
       "env": {
         "CAMBIUM_AGENT_ID": "$AGENT_ID"
       },
+      "config_env": [
+        "CAMBIUM_REMOTE",
+        "CAMBIUM_TEAM_BRANCH",
+        "CAMBIUM_AGENTSYNC_BRANCH",
+        "CAMBIUM_ORG_REPO",
+        "CAMBIUM_ORG_PR",
+        "CAMBIUM_PROMOTE_RECALLS",
+        "CAMBIUM_RELEASE_CAPTURE"
+      ],
       "note": "CAMBIUM_REPO is deliberately NOT pinned to $PROJECT_DIR: that froze cambium to the install-time project. cambium resolves its repo per call (env > config-file > cwd), and the SessionStart session_primer_hook writes the session's real project into cambium's config file, so the running server follows whatever project the session is in. Set CAMBIUM_REPO in the env only to force a fixed project.",
       "artifacts": []
     },
