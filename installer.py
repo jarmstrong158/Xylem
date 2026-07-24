@@ -34,6 +34,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import xylem_interpreter  # noqa: E402  (repo-root sibling module)
+
 # --------------------------------------------------------------------------
 # Constants
 # --------------------------------------------------------------------------
@@ -687,16 +690,13 @@ def load_manifest():
 def resolve_python():
     """The interpreter to launch the stdio servers with.
 
-    The manifest used to hardcode "python3". That is wrong on a very common
-    Windows setup: `python3` resolves to the Microsoft Store shim while the
-    interpreter that actually has `mcp` installed is `python`. The servers got
-    registered into a config where they could never start, with no diagnostic.
-
-    sys.executable is the interpreter running this installer, so if you could
-    run the install, the servers can run -- and installing from a virtualenv
-    registers that virtualenv, which is almost always what you want.
+    The policy itself lives in xylem_interpreter so that this installer and
+    install/xylem_install.py cannot drift apart on it again -- they used to
+    resolve by opposite strategies, and dec-013 records that the other one
+    (shutil.which("python3") first) produces broken Windows installs. All this
+    wrapper adds is the forward-slash normalisation the JSON configs want.
     """
-    return to_fwd(sys.executable or "python3")
+    return to_fwd(xylem_interpreter.resolve_python())
 
 
 def build_mapping(project_dir):

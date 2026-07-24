@@ -93,17 +93,29 @@ def info(msg):
 
 
 # --------------------------------------------------------------------------- #
-# interpreter resolution (for stdio 'python3' launch commands)
+# interpreter resolution (for stdio '$PYTHON' launch commands)
 # --------------------------------------------------------------------------- #
+# The policy lives in the repo-root xylem_interpreter module, shared with
+# installer.py. These two installers used to resolve the interpreter by OPPOSITE
+# strategies -- this one tried shutil.which("python3") first, which dec-013
+# records as the cause of broken Windows installs (python3 is the Microsoft
+# Store shim; the interpreter that has `mcp` is `python`). One policy, one file.
+sys.path.insert(0, str(HERE.parent))
+try:
+    import xylem_interpreter
+except ImportError as _exc:  # pragma: no cover - broken checkout
+    raise SystemExit(
+        "xylem_install: cannot import xylem_interpreter from %s (%s).\n"
+        "This script resolves the server interpreter through the shared policy "
+        "module at the repo root; copying xylem_install.py out of the repo on "
+        "its own leaves it without one. Run it from a full xylem checkout."
+        % (HERE.parent, _exc)
+    )
+
+
 def resolve_python(get):
-    override = get("XYLEM_PYTHON")
-    if override:
-        return override
-    for name in ("python3", "python"):
-        found = shutil.which(name)
-        if found:
-            return found
-    return sys.executable or "python3"
+    """The interpreter to launch the stdio servers with (shared policy)."""
+    return xylem_interpreter.resolve_python(get)
 
 
 # --------------------------------------------------------------------------- #
@@ -196,7 +208,9 @@ def build_server(decl, get):
 
     # stdio
     command = decl["command"]
-    if command in ("python", "python3"):
+    if xylem_interpreter.needs_resolution(command):
+        # "$PYTHON" (what the generated servers.json now carries) and the legacy
+        # bare "python"/"python3" spellings all mean "resolve an interpreter".
         command = resolve_python(get)
 
     args = []

@@ -27,6 +27,6 @@
   "XYLEM_DASHBOARD_PROJECTS": ["/abs/path/to/another/project/clone"],
   "XYLEM_PROJECTS_ROOT": "",
 
-  "_optional": "Uncomment / set any of these to override defaults. XYLEM_PYTHON forces a specific interpreter for the stdio servers (e.g. a venv); otherwise python3/python on PATH is used.",
+  "_optional": "Uncomment / set any of these to override defaults. XYLEM_PYTHON forces a specific interpreter for the stdio servers (e.g. a venv); otherwise the interpreter running the installer (sys.executable) is used, so if you could run the install, the servers can run. Bare 'python3' from PATH is deliberately NOT the default: on Windows that is usually the Microsoft Store shim, and the servers get registered into a config where they can never start.",
   "XYLEM_PYTHON": ""
 }

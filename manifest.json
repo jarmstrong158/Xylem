@@ -1,7 +1,8 @@
 {
   "$schema": "https://xylem.local/manifest.schema.json",
   "version": 4,
-  "description": "Xylem suite server declarations. The installer resolves $PYTHON (the interpreter running the installer), $XYLEM_ROOT (this repo), $XYLEM_PARENT (its parent, i.e. the sibling repos directory), $PROJECT_DIR, and $AGENT_ID placeholders, and reads all url values from environment variables. No URLs or secrets are ever stored in this file.",
+  "description": "Xylem suite server declarations -- the SINGLE source of truth for which servers exist and how they launch. installer.py consumes this directly; install/servers.json is GENERATED from it by scripts/render_discipline.py (it used to be a third hand-maintained copy and drifted: it still said command 'python3' and still pinned CONTEXT_KEEPER_PROJECT / AGENTSYNC_REPO / CAMBIUM_REPO long after both were fixed everywhere else). The installer resolves $PYTHON (the interpreter running the installer), $XYLEM_ROOT (this repo), $XYLEM_PARENT (its parent, i.e. the sibling repos directory), $PROJECT_DIR, and $AGENT_ID placeholders, and reads all url values from environment variables. No URLs or secrets are ever stored in this file.",
+  "config_env_note": "Per-server 'config_env' lists OPTIONAL user knobs that install/xylem_install.py passes through from xylem.config.json / the environment. They are deliberately knobs only -- the *_PROJECT and *_REPO keys are NOT here, because pinning them freezes a server to the install-time project (see each server's note). A user who really wants a fixed project sets that variable in their own environment; the server inherits it at launch.",
   "target": "claude-code",
   "servers": [
     {
