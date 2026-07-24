@@ -47,6 +47,16 @@ FENCE_END = "<!-- XYLEM:END -->"
 # `<!-- XYLEM:BEGIN vN -->`. Group 1 is the integer version, or None if absent.
 FENCE_BEGIN_RE = re.compile(r"<!-- XYLEM:BEGIN(?: v(\d+))? -->")
 BACKUP_SUFFIX = ".xylem-backup"
+# Timestamped hand-edit snapshots: "<file>.xylem-backup.<epoch>". Group 1 is the
+# epoch, which is what makes them sortable and prunable.
+BACKUP_RE = re.compile(re.escape(BACKUP_SUFFIX) + r"\.(\d+)$")
+# These backups are copies of settings.json, which carries the Worker connector
+# URLs -- and those URLs ARE the credential (the Workers authenticate on the URL
+# path, /mcp/<token>). So they get the same treatment install/xylem_install.py
+# already gave its own: owner-only permissions, and no unbounded hoarding.
+BACKUP_MAX_AGE_DAYS = 30   # older snapshots are pruned on every apply
+BACKUP_KEEP = 3            # ...but always keep this many most-recent ones
+SECRET_MODE = 0o600        # configs and backups carry connector tokens
 
 # Marks the SessionStart hooks we own, so uninstall can find exactly them.
 # Each hook is identified by its script filename appearing in the command.
@@ -115,6 +125,72 @@ def detect_json_indent(text, default=2):
     if "\t" in whitespace:
         return "\t"
     return len(whitespace)
+
+
+# --------------------------------------------------------------------------
+# Backup hygiene
+# --------------------------------------------------------------------------
+# install/xylem_install.py already pruned its backups and locked them to 0600,
+# because a backup of a config is a working copy of that config's credentials.
+# installer.py -- the path most people actually run -- did neither, so ~/.claude
+# accumulates .xylem-backup* files indefinitely, world-readable, each one
+# carrying the Worker connector URLs that ARE the tokens. Same policy here.
+
+def secure_chmod(path):
+    """Restrict a secret-bearing file to its owner. Best-effort.
+
+    A no-op against Windows ACLs and on filesystems without POSIX modes, which
+    is why nothing is allowed to fail on it -- the alternative to a
+    best-effort chmod is no chmod at all.
+    """
+    try:
+        os.chmod(path, SECRET_MODE)
+    except OSError:
+        pass
+
+
+def xylem_backups(path):
+    """Every timestamped snapshot THIS installer created for `path`, newest first.
+
+    The pristine `<file>.xylem-backup` is deliberately NOT included: it is the
+    only copy of what existed before Xylem ever touched the file, there is
+    exactly one of it, and it is not what grows without bound.
+    """
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    prefix = os.path.basename(path) + BACKUP_SUFFIX + "."
+    found = []
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return found
+    for name in names:
+        if name.startswith(prefix) and BACKUP_RE.search(name):
+            found.append(os.path.join(directory, name))
+    # The suffix is a fixed-width-enough epoch, but sort on the parsed integer
+    # rather than the string so this keeps working past any digit-count change.
+    found.sort(key=lambda p: int(BACKUP_RE.search(p).group(1)), reverse=True)
+    return found
+
+
+def prune_backups(path, max_age_days=BACKUP_MAX_AGE_DAYS, keep=BACKUP_KEEP):
+    """Delete stale snapshots of `path`. Returns how many went.
+
+    Both conditions must hold: beyond the newest `keep`, AND older than
+    `max_age_days`. Age alone would delete the only copy of a hand edit made on
+    a machine that has not been touched in a month; count alone would delete
+    this morning's edits after three re-runs of the installer.
+    """
+    cutoff = time.time() - max_age_days * 86400
+    removed = 0
+    for old in xylem_backups(path)[keep:]:
+        try:
+            stamp = int(BACKUP_RE.search(old).group(1))
+            if stamp < cutoff:
+                os.remove(old)
+                removed += 1
+        except (OSError, AttributeError, ValueError):
+            pass
+    return removed
 
 
 def detect_style(path):
@@ -584,6 +660,12 @@ class Planner:
             # so a CRLF file does not come back as an all-lines git diff.
             with open(path, "w", encoding=encoding, newline=newline) as fh:
                 fh.write(new)
+            if path.endswith(".json"):
+                # settings.json / .mcp.json carry the Worker connector URLs, and
+                # those URLs are themselves the credential. The markdown we write
+                # (CLAUDE.md, the slash command) is documentation, so it keeps
+                # whatever permissions the user chose for it.
+                secure_chmod(path)
             self._remember(path, new)
             applied.append("wrote %s" % path)
         if self.discard_state:
@@ -634,6 +716,7 @@ class Planner:
                 os.makedirs(parent, exist_ok=True)
             with open(self.state_path, "w", encoding="utf-8") as fh:
                 fh.write(json.dumps(self._state, indent=2) + "\n")
+            secure_chmod(self.state_path)  # it names every config we touched
         except OSError:
             pass  # bookkeeping is best-effort; never fail an install over it
 
@@ -642,6 +725,7 @@ class Planner:
         if not os.path.exists(backup):
             # Preserve the pristine original.
             shutil.copy2(path, backup)
+            secure_chmod(backup)
             return
         if old == new:
             return
@@ -650,7 +734,10 @@ class Planner:
             return  # exactly what we wrote last time -- nothing of the user's
         # The on-disk content is neither our last write nor the new text, so it
         # holds hand edits. Keep them alongside the pristine backup.
-        shutil.copy2(path, "%s.%d" % (backup, int(time.time())))
+        snapshot = "%s.%d" % (backup, int(time.time()))
+        shutil.copy2(path, snapshot)
+        secure_chmod(snapshot)
+        prune_backups(path)
 
 
 # --------------------------------------------------------------------------
