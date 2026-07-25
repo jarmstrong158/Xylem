@@ -167,7 +167,27 @@ def main():
         )
         return 0
 
-    session_cwd = _payload().get("cwd") or os.getcwd()
+    # No os.getcwd() fallback. A hook process inherits whatever directory it was
+    # launched from, which is very often *a* git repo -- just not the session's.
+    # The _git_root guard below cannot catch that: it resolves happily and
+    # captures into the wrong project, which is the exact failure this script's
+    # header says it exists to avoid. No payload cwd means no idea which project
+    # this was, so distil nothing.
+    #
+    # This is also what makes the hooks.json `A || B` interpreter chain safe. If
+    # A is killed (SessionEnd has a hard timeout, and a killed process's exit
+    # status is not the script's to control, whatever it returns on its own code
+    # paths), B runs against a stdin A has already drained -- landing here with
+    # an empty payload. Skipping is the correct outcome for that second run.
+    session_cwd = _payload().get("cwd")
+    if not session_cwd:
+        print(
+            "xylem: no session cwd in the SessionEnd payload - skipping "
+            "distillation rather than capturing into whichever project this "
+            "hook process happened to start in."
+        )
+        return 0
+
     root = _git_root(session_cwd)
     if root is None:
         print(

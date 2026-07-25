@@ -171,6 +171,40 @@ class DistillEndToEnd(unittest.TestCase):
             proc = _run_hook({"cwd": repo}, {"XYLEM_CAMBIUM_PATH": server})
             self.assertIn("distilled %d new item(s)" % len(repo), proc.stdout)
 
+    def test_an_empty_payload_distills_nothing_even_from_inside_a_repo(self):
+        """No payload cwd => no idea which project this was => capture nothing.
+
+        The old `or os.getcwd()` fallback made this capture into whatever repo
+        the hook process was launched from. The _git_root guard cannot catch
+        that: it resolves happily, into the wrong project.
+
+        This is also the second leg of the hooks.json `A || B` chain. If A is
+        killed at the SessionEnd timeout -- a killed process's exit status is
+        not the script's to control -- B runs against a stdin A has already
+        drained, and lands here.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            inherited = os.path.join(tmp, "some-other-repo")
+            os.makedirs(os.path.join(inherited, ".git"))
+            server = self._fake_cambium(
+                tmp,
+                "import json, os\n"
+                "def distill():\n"
+                "    return json.dumps({'status': 'distilled', 'new_items': 1})\n",
+            )
+            env = dict(os.environ)
+            env.pop("CAMBIUM_SERVER", None)
+            env["XYLEM_CAMBIUM_PATH"] = server
+            proc = subprocess.run(
+                [sys.executable, os.path.join(PLUGIN, "scripts", "distill.py")],
+                input="",                 # A already drained stdin
+                cwd=inherited,            # ...and this is NOT the session's repo
+                capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertIn("no session cwd", proc.stdout)
+            self.assertNotIn("distilled", proc.stdout)
+
     def test_an_unconfigured_cambium_reports_nothing_distilled(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = os.path.join(tmp, "repo")
