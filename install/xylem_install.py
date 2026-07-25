@@ -93,17 +93,29 @@ def info(msg):
 
 
 # --------------------------------------------------------------------------- #
-# interpreter resolution (for stdio 'python3' launch commands)
+# interpreter resolution (for stdio '$PYTHON' launch commands)
 # --------------------------------------------------------------------------- #
+# The policy lives in the repo-root xylem_interpreter module, shared with
+# installer.py. These two installers used to resolve the interpreter by OPPOSITE
+# strategies -- this one tried shutil.which("python3") first, which dec-013
+# records as the cause of broken Windows installs (python3 is the Microsoft
+# Store shim; the interpreter that has `mcp` is `python`). One policy, one file.
+sys.path.insert(0, str(HERE.parent))
+try:
+    import xylem_interpreter
+except ImportError as _exc:  # pragma: no cover - broken checkout
+    raise SystemExit(
+        "xylem_install: cannot import xylem_interpreter from %s (%s).\n"
+        "This script resolves the server interpreter through the shared policy "
+        "module at the repo root; copying xylem_install.py out of the repo on "
+        "its own leaves it without one. Run it from a full xylem checkout."
+        % (HERE.parent, _exc)
+    )
+
+
 def resolve_python(get):
-    override = get("XYLEM_PYTHON")
-    if override:
-        return override
-    for name in ("python3", "python"):
-        found = shutil.which(name)
-        if found:
-            return found
-    return sys.executable or "python3"
+    """The interpreter to launch the stdio servers with (shared policy)."""
+    return xylem_interpreter.resolve_python(get)
 
 
 # --------------------------------------------------------------------------- #
@@ -196,7 +208,9 @@ def build_server(decl, get):
 
     # stdio
     command = decl["command"]
-    if command in ("python", "python3"):
+    if xylem_interpreter.needs_resolution(command):
+        # "$PYTHON" (what the generated servers.json now carries) and the legacy
+        # bare "python"/"python3" spellings all mean "resolve an interpreter".
         command = resolve_python(get)
 
     args = []
@@ -542,16 +556,30 @@ def xylem_backups(path):
     return found
 
 
+def backup_taken_at(p):
+    """Epoch seconds this backup was taken, read from its NAME.
+
+    Deliberately not st_mtime: `shutil.copy2` copies the *config's* mtime onto
+    the backup, so mtime answers "when was the config last edited", not "when
+    was this backup taken". A config untouched for a year yields a brand-new
+    backup that looks a year old; a config edited hourly yields backups that
+    never age out — and these files carry live connector tokens.
+    """
+    stamp = BACKUP_RE.search(p.name).group(1)
+    # strftime wrote local time (no tz argument), so mktime reads it back.
+    return time.mktime(time.strptime(stamp, BACKUP_TS_FMT))
+
+
 def prune_backups(path, max_age_days=BACKUP_MAX_AGE_DAYS, keep=BACKUP_KEEP):
     """Delete stale Xylem backups. They hold live connector tokens; don't hoard them."""
     cutoff = time.time() - max_age_days * 86400
     removed = 0
     for old in xylem_backups(path)[keep:]:
         try:
-            if old.stat().st_mtime < cutoff:
+            if backup_taken_at(old) < cutoff:
                 old.unlink()
                 removed += 1
-        except OSError:
+        except (OSError, AttributeError, ValueError, OverflowError):
             pass
     if removed:
         info("pruned %d backup(s) older than %d days" % (removed, max_age_days))

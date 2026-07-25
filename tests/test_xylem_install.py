@@ -10,6 +10,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -328,13 +329,57 @@ class WriteWithBackupTest(unittest.TestCase):
     def test_prune_keeps_recent_and_drops_stale(self):
         self.p.write_bytes(b"{}")
         stale = []
-        for i in range(6):
-            b = self.tmp / ("cfg.json.bak-2020010%d000000" % i)
+        for day in range(1, 7):  # valid days: strptime rejects day 00
+            b = self.tmp / ("cfg.json.bak-202001%02d000000" % day)
             b.write_bytes(b"{}")
             os.utime(str(b), (0, 0))  # epoch => far older than the cutoff
             stale.append(b)
         xi.prune_backups(self.p, max_age_days=1, keep=xi.BACKUP_KEEP)
         self.assertEqual(len(xi.xylem_backups(self.p)), xi.BACKUP_KEEP)
+
+    def test_prune_ages_by_name_not_mtime(self):
+        """A fresh backup of a long-untouched config must survive.
+
+        shutil.copy2 stamps the *config's* mtime onto the backup, so an mtime
+        test would read "last edited a year ago" as "backed up a year ago" and
+        delete a backup taken seconds ago.
+        """
+        self.p.write_bytes(b"{}")
+        fresh = []
+        now = time.time()  # pinned: re-reading the clock can repeat a second
+        for i in range(6):
+            name = "cfg.json.bak-" + time.strftime(
+                xi.BACKUP_TS_FMT, time.localtime(now - i))
+            b = self.tmp / name
+            b.write_bytes(b"{}")
+            os.utime(str(b), (0, 0))  # as copy2 would: the config's old mtime
+            fresh.append(b)
+        self.assertEqual(xi.prune_backups(self.p, max_age_days=1), 0)
+        self.assertEqual(len(xi.xylem_backups(self.p)), len(fresh))
+
+    def test_prune_drops_old_name_despite_fresh_mtime(self):
+        """The converse: a genuinely old backup goes even if its mtime is new."""
+        self.p.write_bytes(b"{}")
+        for day in range(1, 7):
+            b = self.tmp / ("cfg.json.bak-202001%02d000000" % day)
+            b.write_bytes(b"{}")
+            os.utime(str(b), None)  # mtime = now, name = 2020
+        removed = xi.prune_backups(self.p, max_age_days=1, keep=xi.BACKUP_KEEP)
+        self.assertEqual(removed, 6 - xi.BACKUP_KEEP)
+
+    def test_prune_keeps_undatable_names(self):
+        """A 14-digit name that is not a real date is kept, not guessed at.
+
+        It can only come from a corrupt or hand-made file — deleting something
+        we cannot date is worse than keeping it, and `uninstall --apply` still
+        purges every .bak-* unconditionally, so no token outlives an uninstall.
+        """
+        self.p.write_bytes(b"{}")
+        for name in ("cfg.json.bak-20200100000000",   # day 00: not a date
+                     "cfg.json.bak-20209901000000"):  # month 99: not a date
+            (self.tmp / name).write_bytes(b"{}")
+        self.assertEqual(xi.prune_backups(self.p, max_age_days=1, keep=0), 0)
+        self.assertEqual(len(xi.xylem_backups(self.p)), 2)
 
 
 # --------------------------------------------------------------------------- #

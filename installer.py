@@ -34,6 +34,9 @@ import subprocess
 import sys
 import time
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import xylem_interpreter  # noqa: E402  (repo-root sibling module)
+
 # --------------------------------------------------------------------------
 # Constants
 # --------------------------------------------------------------------------
@@ -44,6 +47,16 @@ FENCE_END = "<!-- XYLEM:END -->"
 # `<!-- XYLEM:BEGIN vN -->`. Group 1 is the integer version, or None if absent.
 FENCE_BEGIN_RE = re.compile(r"<!-- XYLEM:BEGIN(?: v(\d+))? -->")
 BACKUP_SUFFIX = ".xylem-backup"
+# Timestamped hand-edit snapshots: "<file>.xylem-backup.<epoch>". Group 1 is the
+# epoch, which is what makes them sortable and prunable.
+BACKUP_RE = re.compile(re.escape(BACKUP_SUFFIX) + r"\.(\d+)$")
+# These backups are copies of settings.json, which carries the Worker connector
+# URLs -- and those URLs ARE the credential (the Workers authenticate on the URL
+# path, /mcp/<token>). So they get the same treatment install/xylem_install.py
+# already gave its own: owner-only permissions, and no unbounded hoarding.
+BACKUP_MAX_AGE_DAYS = 30   # older snapshots are pruned on every apply
+BACKUP_KEEP = 3            # ...but always keep this many most-recent ones
+SECRET_MODE = 0o600        # configs and backups carry connector tokens
 
 # Marks the SessionStart hooks we own, so uninstall can find exactly them.
 # Each hook is identified by its script filename appearing in the command.
@@ -112,6 +125,72 @@ def detect_json_indent(text, default=2):
     if "\t" in whitespace:
         return "\t"
     return len(whitespace)
+
+
+# --------------------------------------------------------------------------
+# Backup hygiene
+# --------------------------------------------------------------------------
+# install/xylem_install.py already pruned its backups and locked them to 0600,
+# because a backup of a config is a working copy of that config's credentials.
+# installer.py -- the path most people actually run -- did neither, so ~/.claude
+# accumulates .xylem-backup* files indefinitely, world-readable, each one
+# carrying the Worker connector URLs that ARE the tokens. Same policy here.
+
+def secure_chmod(path):
+    """Restrict a secret-bearing file to its owner. Best-effort.
+
+    A no-op against Windows ACLs and on filesystems without POSIX modes, which
+    is why nothing is allowed to fail on it -- the alternative to a
+    best-effort chmod is no chmod at all.
+    """
+    try:
+        os.chmod(path, SECRET_MODE)
+    except OSError:
+        pass
+
+
+def xylem_backups(path):
+    """Every timestamped snapshot THIS installer created for `path`, newest first.
+
+    The pristine `<file>.xylem-backup` is deliberately NOT included: it is the
+    only copy of what existed before Xylem ever touched the file, there is
+    exactly one of it, and it is not what grows without bound.
+    """
+    directory = os.path.dirname(os.path.abspath(path)) or "."
+    prefix = os.path.basename(path) + BACKUP_SUFFIX + "."
+    found = []
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return found
+    for name in names:
+        if name.startswith(prefix) and BACKUP_RE.search(name):
+            found.append(os.path.join(directory, name))
+    # The suffix is a fixed-width-enough epoch, but sort on the parsed integer
+    # rather than the string so this keeps working past any digit-count change.
+    found.sort(key=lambda p: int(BACKUP_RE.search(p).group(1)), reverse=True)
+    return found
+
+
+def prune_backups(path, max_age_days=BACKUP_MAX_AGE_DAYS, keep=BACKUP_KEEP):
+    """Delete stale snapshots of `path`. Returns how many went.
+
+    Both conditions must hold: beyond the newest `keep`, AND older than
+    `max_age_days`. Age alone would delete the only copy of a hand edit made on
+    a machine that has not been touched in a month; count alone would delete
+    this morning's edits after three re-runs of the installer.
+    """
+    cutoff = time.time() - max_age_days * 86400
+    removed = 0
+    for old in xylem_backups(path)[keep:]:
+        try:
+            stamp = int(BACKUP_RE.search(old).group(1))
+            if stamp < cutoff:
+                os.remove(old)
+                removed += 1
+        except (OSError, AttributeError, ValueError):
+            pass
+    return removed
 
 
 def detect_style(path):
@@ -581,6 +660,12 @@ class Planner:
             # so a CRLF file does not come back as an all-lines git diff.
             with open(path, "w", encoding=encoding, newline=newline) as fh:
                 fh.write(new)
+            if path.endswith(".json"):
+                # settings.json / .mcp.json carry the Worker connector URLs, and
+                # those URLs are themselves the credential. The markdown we write
+                # (CLAUDE.md, the slash command) is documentation, so it keeps
+                # whatever permissions the user chose for it.
+                secure_chmod(path)
             self._remember(path, new)
             applied.append("wrote %s" % path)
         if self.discard_state:
@@ -631,6 +716,7 @@ class Planner:
                 os.makedirs(parent, exist_ok=True)
             with open(self.state_path, "w", encoding="utf-8") as fh:
                 fh.write(json.dumps(self._state, indent=2) + "\n")
+            secure_chmod(self.state_path)  # it names every config we touched
         except OSError:
             pass  # bookkeeping is best-effort; never fail an install over it
 
@@ -639,6 +725,7 @@ class Planner:
         if not os.path.exists(backup):
             # Preserve the pristine original.
             shutil.copy2(path, backup)
+            secure_chmod(backup)
             return
         if old == new:
             return
@@ -647,7 +734,10 @@ class Planner:
             return  # exactly what we wrote last time -- nothing of the user's
         # The on-disk content is neither our last write nor the new text, so it
         # holds hand edits. Keep them alongside the pristine backup.
-        shutil.copy2(path, "%s.%d" % (backup, int(time.time())))
+        snapshot = "%s.%d" % (backup, int(time.time()))
+        shutil.copy2(path, snapshot)
+        secure_chmod(snapshot)
+        prune_backups(path)
 
 
 # --------------------------------------------------------------------------
@@ -687,16 +777,13 @@ def load_manifest():
 def resolve_python():
     """The interpreter to launch the stdio servers with.
 
-    The manifest used to hardcode "python3". That is wrong on a very common
-    Windows setup: `python3` resolves to the Microsoft Store shim while the
-    interpreter that actually has `mcp` installed is `python`. The servers got
-    registered into a config where they could never start, with no diagnostic.
-
-    sys.executable is the interpreter running this installer, so if you could
-    run the install, the servers can run -- and installing from a virtualenv
-    registers that virtualenv, which is almost always what you want.
+    The policy itself lives in xylem_interpreter so that this installer and
+    install/xylem_install.py cannot drift apart on it again -- they used to
+    resolve by opposite strategies, and dec-013 records that the other one
+    (shutil.which("python3") first) produces broken Windows installs. All this
+    wrapper adds is the forward-slash normalisation the JSON configs want.
     """
-    return to_fwd(sys.executable or "python3")
+    return to_fwd(xylem_interpreter.resolve_python())
 
 
 def build_mapping(project_dir):
@@ -972,13 +1059,155 @@ def _script_parses(path):
         return False
 
 
-def diagnose(manifest, mapping, python, has_mcp):
-    """Per-server health rows. Pure given its inputs: no launch, no network.
+# --------------------------------------------------------------------------
+# The MCP initialize handshake
+# --------------------------------------------------------------------------
+# doctor used to report "all servers healthy" for servers it had never started.
+# It checked three things -- the file exists, compile() accepts it, and the
+# interpreter can `import mcp` -- and none of those is the question the user is
+# asking. A server whose module raises at import, whose required env var is
+# missing, whose own dependency is absent, or which crashes before it can speak
+# MCP passes all three and is reported OK. That is verification that does not
+# verify, and it is the failure this whole codebase keeps repeating.
+#
+# So: actually launch it and complete a real handshake.
 
-    Each row is (name, ok, symbol, detail). stdio servers are healthy when their
-    script exists, parses, and the interpreter has `mcp`; http servers report
-    whether their URL env var is set (unset is a warning, not a failure -- the
-    remotes are optional).
+HANDSHAKE_TIMEOUT = 20  # seconds per server; a hung server must not hang doctor
+MCP_PROTOCOL_VERSION = "2024-11-05"
+
+CLIENT_INFO = {"name": "xylem-doctor", "version": "1"}
+
+
+def _handshake_payload():
+    """The bytes a client sends to open an MCP session, newline-delimited JSON.
+
+    MCP's stdio transport is one JSON-RPC message per line. We send the
+    `initialize` request and the `notifications/initialized` that follows it in
+    a single write, then close stdin: the server answers, sees EOF, and exits on
+    its own. That is what lets a single communicate() call carry a hard timeout
+    with no reader thread and no possibility of deadlocking on a server that
+    says nothing.
+    """
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": MCP_PROTOCOL_VERSION,
+            "capabilities": {},
+            "clientInfo": CLIENT_INFO,
+        },
+    }
+    initialized = {"jsonrpc": "2.0", "method": "notifications/initialized"}
+    return json.dumps(request) + "\n" + json.dumps(initialized) + "\n"
+
+
+def parse_initialize_response(stdout):
+    """(ok, detail) from a server's stdout during the handshake.
+
+    Looks for the JSON-RPC reply to id 1. A JSON-RPC *error* reply is a failure
+    with the server's own message, which is far more useful than "unhealthy":
+    the server is telling you what it needs.
+    """
+    for line in (stdout or "").splitlines():
+        line = line.strip()
+        if not line or not line.startswith("{"):
+            continue  # servers log freely on stdout before the transport opens
+        try:
+            message = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(message, dict) or message.get("id") != 1:
+            continue
+        if "error" in message:
+            error = message["error"] or {}
+            return False, "server refused initialize: %s" % (
+                error.get("message") or json.dumps(error))
+        result = message.get("result")
+        if not isinstance(result, dict):
+            continue
+        info = result.get("serverInfo") or {}
+        name = info.get("name") or "unnamed server"
+        version = info.get("version")
+        protocol = result.get("protocolVersion") or "unknown"
+        return True, "handshake OK -- %s%s (MCP %s)" % (
+            name, " v%s" % version if version else "", protocol)
+    return False, ""
+
+
+def mcp_handshake(command, args, env=None, timeout=HANDSHAKE_TIMEOUT, cwd=None):
+    """Spawn a stdio MCP server and complete an `initialize` handshake.
+
+    Returns (ok, detail). Never raises: every failure mode a user can hit --
+    the interpreter is missing, the module raises at import, a required env var
+    is unset, the process hangs, it exits without speaking MCP -- comes back as
+    a row with a reason.
+    """
+    child_env = dict(os.environ)
+    child_env.update(env or {})
+    # The server inherits the doctor's stdin otherwise, and an interactive
+    # terminal would keep a misbehaving server alive past the timeout.
+    try:
+        proc = subprocess.Popen(
+            [command] + list(args),
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, universal_newlines=True,
+            env=child_env, cwd=cwd)
+    except OSError as exc:
+        return False, "could not launch: %s" % exc
+
+    try:
+        stdout, stderr = proc.communicate(_handshake_payload(), timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        return False, ("no response to initialize within %ds -- the server "
+                       "started but never spoke MCP" % timeout)
+    except Exception as exc:  # pragma: no cover - defensive
+        try:
+            proc.kill()
+        except OSError:
+            pass
+        return False, "handshake failed: %s" % exc
+
+    ok, detail = parse_initialize_response(stdout)
+    if ok:
+        return True, detail
+    if detail:
+        return False, detail
+
+    # No initialize reply at all. The server's own stderr is the diagnosis --
+    # a traceback, a missing env var, an ImportError -- so surface its last
+    # meaningful line rather than inventing a summary.
+    note = _last_meaningful_line(stderr) or _last_meaningful_line(stdout)
+    reason = "exited %s" % proc.returncode if proc.returncode else "no initialize reply"
+    return False, "%s%s" % (reason, ": %s" % note if note else "")
+
+
+def _last_meaningful_line(text):
+    """The last non-blank line of a stream, trimmed for one-line reporting."""
+    lines = [line.strip() for line in (text or "").splitlines() if line.strip()]
+    if not lines:
+        return ""
+    last = lines[-1]
+    return last if len(last) <= 200 else last[:197] + "..."
+
+
+def diagnose(manifest, mapping, python, has_mcp, handshake=mcp_handshake):
+    """Per-server health rows: (name, ok, symbol, detail).
+
+    A stdio server is healthy when it LAUNCHES and completes an MCP
+    `initialize` handshake -- not when its file happens to parse. The cheap
+    checks are kept, but only as better error messages: a missing script or a
+    syntax error is reported as itself rather than as a failed handshake.
+
+    http servers still report whether their URL env var is set, without a
+    network call: an unset URL is a warning (the remotes are optional) and
+    reaching out to a Worker would make doctor's exit code depend on the
+    network.
+
+    `handshake` is injectable so the suite can drive every outcome without
+    spawning real servers; run_doctor uses the real one.
     """
     rows = []
     for server in enabled_servers(manifest):
@@ -997,7 +1226,10 @@ def diagnose(manifest, mapping, python, has_mcp):
                              "interpreter %s cannot import 'mcp' (pip install "
                              "mcp)" % python))
             else:
-                rows.append((name, True, "OK", path))
+                args = resolve_placeholders(server.get("args", []), mapping)
+                env = resolve_placeholders(server.get("env", {}), mapping)
+                ok, detail = handshake(python, args, env)
+                rows.append((name, ok, "OK" if ok else "FAIL", detail))
         elif transport == "http":
             url_key = server.get("url_env_key")
             if url_key and os.environ.get(url_key):
@@ -1014,7 +1246,11 @@ def diagnose(manifest, mapping, python, has_mcp):
 
 
 def run_doctor(args):
-    """`installer.py doctor`: report whether each server can actually start.
+    """`installer.py doctor`: report whether each server actually starts.
+
+    Every stdio server is launched and taken through a real MCP `initialize`
+    handshake -- doctor previously reported "all servers healthy" for servers it
+    had never run, on the strength of the file existing and compiling.
 
     Exit 0 only when every stdio (required) server is healthy; non-zero if any
     is broken, so it is usable as a CI/post-install gate.
@@ -1036,11 +1272,15 @@ def run_doctor(args):
             broken += 1
     print()
     if broken:
-        print("xylem: %d server(s) will not start. Run the installer with "
+        print("xylem: %d server(s) failed to start. Run the installer with "
               "--apply to fetch missing servers, or fix the notes above."
               % broken)
         return 1
-    print("xylem: all servers healthy.")
+    # Say what was actually verified. "healthy" without a qualifier is how the
+    # old check got away with never launching anything.
+    started = sum(1 for _, _, symbol, _ in rows if symbol == "OK")
+    print("xylem: all servers healthy (%d completed an MCP initialize "
+          "handshake or are configured remotes)." % started)
     return 0
 
 

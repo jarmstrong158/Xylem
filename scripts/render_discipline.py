@@ -34,6 +34,11 @@ OUT_BLOCK = os.path.join(ROOT, "artifacts", "claude_md_block.md")
 OUT_COMMAND = os.path.join(ROOT, "artifacts", "xylem_discipline.md")
 OUT_PLUGIN = os.path.join(ROOT, "plugin", "artifacts", "discipline.md")
 OUT_MCP = os.path.join(ROOT, "plugin", ".mcp.json")
+OUT_SERVERS = os.path.join(ROOT, "install", "servers.json")
+OUT_PLUGIN_HOOKS = os.path.join(ROOT, "plugin", "hooks", "hooks.json")
+
+sys.path.insert(0, ROOT)
+import xylem_interpreter  # noqa: E402  (repo-root sibling module)
 
 GENERATED_NOTE = (
     "GENERATED FILE -- do not edit by hand. "
@@ -154,6 +159,141 @@ def render_mcp(manifest):
     return json.dumps(payload, indent=2) + "\n"
 
 
+SERVERS_COMMENT = (
+    "GENERATED FILE -- do not edit by hand. Source: manifest.json. "
+    "Regenerate: python scripts/render_discipline.py --write. "
+    "This is the server manifest install/xylem_install.py reads (the multi-agent "
+    "install path). It used to be a THIRD hand-maintained copy of the server "
+    "declarations, outside the drift guard, and it drifted exactly as you would "
+    "expect: long after both were fixed everywhere else it still said "
+    "command 'python3' (the Microsoft Store shim on Windows -- see dec-013) and "
+    "still pinned CONTEXT_KEEPER_PROJECT / AGENTSYNC_REPO / CAMBIUM_REPO, which "
+    "freezes each server to the install-time project. To add a server or flip a "
+    "transport, edit manifest.json. ${NAME} placeholders are resolved at install "
+    "time from environment variables (which win) or the untracked "
+    "xylem.config.json; no absolute paths, URLs, or secrets live here."
+)
+
+
+def server_key(name):
+    """The xylem.config.json key holding the path to a server's entry script.
+
+    install/xylem_install.py addresses the server scripts by an absolute path
+    the user configures (${CONTEXT_KEEPER_SERVER}), where installer.py addresses
+    them relative to the checkout ($XYLEM_PARENT/context-keeper/server.py). Two
+    legitimate conventions -- the derivation from the manifest name is what keeps
+    them one declaration rather than two.
+    """
+    return name.upper().replace("-", "_") + "_SERVER"
+
+
+def render_servers(manifest):
+    """install/servers.json, derived from manifest.json.
+
+    The env mapping is fully mechanical, which is the point -- there is nothing
+    here a human can quietly get wrong:
+
+      * an $AGENT_ID-valued manifest env key becomes a REQUIRED config key
+        (each agent must identify itself; there is no sane default);
+      * every key in the server's `config_env` becomes an OPTIONAL passthrough
+        knob;
+      * a manifest env key with a literal value is an installer.py-path default
+        and is NOT copied -- if it is meant to be user-settable here, it belongs
+        in `config_env` (AGENTSYNC_BRANCH is, and so appears as a knob).
+
+    The *_PROJECT / *_REPO keys cannot reappear: they are neither $AGENT_ID-valued
+    nor listed in any config_env, and the manifest notes explain why pinning them
+    is wrong.
+    """
+    servers = []
+    for decl in manifest["servers"]:
+        if not decl.get("available", True):
+            continue
+        name = decl["name"]
+        if decl.get("transport") == "http":
+            key = decl["url_env_key"]
+            servers.append(
+                {
+                    "name": name,
+                    "transport": "http",
+                    "url": "${%s}" % key,
+                    "required": [key],
+                }
+            )
+            continue
+
+        key = server_key(name)
+        required = [key]
+        env = {}
+        for env_key, value in decl.get("env", {}).items():
+            if value == "$AGENT_ID":
+                env[env_key] = "${%s}" % env_key
+                required.append(env_key)
+        for env_key in decl.get("config_env", []):
+            env.setdefault(env_key, "${%s}" % env_key)
+
+        servers.append(
+            {
+                "name": name,
+                "transport": "stdio",
+                # Not a bare "python3": xylem_interpreter.needs_resolution()
+                # treats "$PYTHON" as "resolve a real interpreter", which is the
+                # single policy both installers now share.
+                "command": "$PYTHON",
+                "args": ["${%s}" % key],
+                "env": env,
+                "required": required,
+            }
+        )
+
+    payload = {
+        "_comment": SERVERS_COMMENT,
+        "version": manifest["version"],
+        "servers": servers,
+    }
+    return json.dumps(payload, indent=2) + "\n"
+
+
+PLUGIN_HOOKS = [
+    ("SessionStart", "scripts/primer.py", 10),
+    ("SessionEnd", "scripts/distill.py", 60),
+]
+
+PLUGIN_HOOKS_COMMENT = (
+    "GENERATED FILE -- do not edit by hand. Source: scripts/render_discipline.py "
+    "(launch commands from xylem_interpreter.launch_command). Regenerate: "
+    "python scripts/render_discipline.py --write. "
+    "Each command is an interpreter FALLBACK CHAIN, not a bare name. The plugin "
+    "has no install step -- Claude Code reads this file verbatim -- so the "
+    "command cannot carry a resolved interpreter path, and dec-013 is about why "
+    "it must not carry a bare name either: on a very common Windows box "
+    "`python3` is the Microsoft Store shim (prints a notice, exits non-zero) "
+    "while `python` works, and on most Linux/macOS boxes only `python3` exists. "
+    "`A || B` means the same thing in cmd.exe and POSIX sh, and the non-zero "
+    "exit is what makes the chain fall through to a real interpreter. Both hook "
+    "scripts exit 0 on every path, so a chain can never run one of them twice."
+)
+
+
+def render_plugin_hooks():
+    """plugin/hooks/hooks.json, with launch commands from the shared policy.
+
+    This file shipped `python "..."` -- the exact bare-name bug dec-013
+    documents, reintroduced on the plugin path, where it is silent: a
+    SessionStart hook that fails to launch produces no primer and no error.
+    """
+    hooks = {}
+    for event, script, timeout in PLUGIN_HOOKS:
+        command = xylem_interpreter.launch_command(
+            "${CLAUDE_PLUGIN_ROOT}/" + script
+        )
+        hooks[event] = [
+            {"hooks": [{"type": "command", "command": command, "timeout": timeout}]}
+        ]
+    payload = {"$comment": PLUGIN_HOOKS_COMMENT, "hooks": hooks}
+    return json.dumps(payload, indent=2) + "\n"
+
+
 # --------------------------------------------------------------------------
 
 
@@ -166,6 +306,8 @@ def outputs():
         (OUT_COMMAND, render_command(src)),
         (OUT_PLUGIN, render_plugin(src)),
         (OUT_MCP, render_mcp(manifest)),
+        (OUT_SERVERS, render_servers(manifest)),
+        (OUT_PLUGIN_HOOKS, render_plugin_hooks()),
     ]
 
 

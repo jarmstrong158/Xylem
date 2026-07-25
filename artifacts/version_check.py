@@ -21,9 +21,31 @@ Where it looks:
     local pull -- which is exactly what `xylem update` then resolves. Falls back
     to the working-tree manifest.json.
 
+The upstream fetch is OPT-IN and RATE-LIMITED
+---------------------------------------------
+This runs on every SessionStart, inside a 10-second hook budget. An eager
+`git fetch origin` there costs up to the whole budget of latency on every
+single session -- on a slow, captive, or offline network -- for a cosmetic
+notice. docs/versioning.md has described the fetch as off by default, capped at
+once per 24 hours, and bounded by a 3-second timeout; none of that existed, so
+the doc was the design and the code was the bug. It exists now:
+
+  * off unless XYLEM_FETCH_ON_CHECK=1;
+  * at most one fetch per XYLEM_FETCH_INTERVAL seconds (default 86400), tracked
+    by a timestamp cache file;
+  * a 3-second timeout on the fetch itself, so even the once-a-day fetch cannot
+    eat the hook budget.
+
+The comparison against the local clone still happens on EVERY session, so a
+stale block is still caught immediately; you just learn about a brand-new
+upstream version on your next pull rather than instantly.
+
 Config (environment):
   - XYLEM_ROOT            : path to the xylem clone (default: this script's repo)
-  - XYLEM_FETCH_ON_CHECK  : "1" (default) to `git fetch` first; "0" to skip
+  - XYLEM_FETCH_ON_CHECK  : "1" to `git fetch` first; off by default
+  - XYLEM_FETCH_INTERVAL  : seconds between fetches (default 86400 = 24h; 0 = always)
+  - XYLEM_FETCH_TIMEOUT   : seconds before the fetch is abandoned (default 3)
+  - XYLEM_FETCH_STAMP     : override path to the timestamp cache file
   - XYLEM_FETCH_REF       : ref to read the template from (default origin/main)
   - XYLEM_CHECK_TARGETS   : override list of CLAUDE.md paths to inspect
 
@@ -36,6 +58,13 @@ import os
 import re
 import subprocess
 import sys
+import time
+
+# Defaults for the fetch rate limiter. See the module docstring.
+FETCH_DEFAULT_ON = False
+FETCH_INTERVAL_DEFAULT = 24 * 60 * 60  # once a day
+FETCH_TIMEOUT_DEFAULT = 3  # seconds; the hook budget is 10 in total
+STAMP_FILENAME = "xylem-fetch-stamp"
 
 # Same grammar the installer stamps with: optional ` vN` after BEGIN.
 FENCE_BEGIN_RE = re.compile(r"<!-- XYLEM:BEGIN(?: v(\d+))? -->")
@@ -80,14 +109,108 @@ def _run_git(git_args, cwd, timeout=10):
     return proc.returncode == 0, (proc.stdout or "")
 
 
+def _env_int(key, default):
+    """A non-negative integer from the environment, or `default`. Never raises."""
+    raw = os.environ.get(key, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value >= 0 else default
+
+
+def fetch_enabled(env=None):
+    """Is the upstream fetch turned on? Off by default -- see the docstring."""
+    env = os.environ if env is None else env
+    raw = env.get("XYLEM_FETCH_ON_CHECK", "").strip().lower()
+    if not raw:
+        return FETCH_DEFAULT_ON
+    return raw in ("1", "true", "yes", "on")
+
+
+def stamp_path(root):
+    """Where the last-fetch timestamp lives.
+
+    Inside .git by preference: it is per-clone (two checkouts rate-limit
+    independently, which is what you want), it is never committed, and it is
+    already a directory this tool may write to. A worktree/submodule has a .git
+    FILE rather than a directory, and a tarball export has neither, so both fall
+    back to the user cache dir.
+    """
+    override = os.environ.get("XYLEM_FETCH_STAMP", "").strip()
+    if override:
+        return override
+
+    git_dir = os.path.join(root, ".git")
+    if os.path.isdir(git_dir):
+        return os.path.join(git_dir, STAMP_FILENAME)
+
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA") or os.path.join(
+            os.path.expanduser("~"), "AppData", "Local")
+    else:
+        base = os.environ.get("XDG_CACHE_HOME") or os.path.join(
+            os.path.expanduser("~"), ".cache")
+    return os.path.join(base, "xylem", STAMP_FILENAME)
+
+
+def _last_fetch(path):
+    """Epoch seconds of the last fetch attempt, or None. Never raises."""
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return float(fh.read().strip())
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _record_fetch(path, now):
+    """Stamp the fetch time. A read-only or missing directory is not an error."""
+    try:
+        parent = os.path.dirname(path)
+        if parent and not os.path.isdir(parent):
+            os.makedirs(parent)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write("%d\n" % int(now))
+    except OSError:
+        # Cannot persist the stamp: the check still works, it just cannot
+        # rate-limit. Better than failing the session over a cache file.
+        pass
+
+
+def fetch_is_due(root, now=None, interval=None):
+    """True when the last fetch is older than the interval (or never happened).
+
+    A stamp in the FUTURE (a clock that jumped back, or a restored backup)
+    counts as due rather than blocking fetches until the clock catches up.
+    """
+    now = time.time() if now is None else now
+    if interval is None:
+        interval = _env_int("XYLEM_FETCH_INTERVAL", FETCH_INTERVAL_DEFAULT)
+    if interval <= 0:
+        return True
+    last = _last_fetch(stamp_path(root))
+    if last is None:
+        return True
+    if last > now:
+        return True
+    return (now - last) >= interval
+
+
 def _template_version(root):
     """Template version from the clone: origin (after fetch) then working tree."""
-    fetch_on = os.environ.get("XYLEM_FETCH_ON_CHECK", "1").strip() != "0"
     ref = os.environ.get("XYLEM_FETCH_REF", "origin/main").strip() or "origin/main"
 
-    if fetch_on:
+    if fetch_enabled() and fetch_is_due(root):
         remote = ref.split("/", 1)[0] if "/" in ref else "origin"
-        fetched, _ = _run_git(["fetch", "--quiet", remote], root)
+        # Stamp BEFORE the fetch, not after: an attempt that hangs to its
+        # timeout is exactly the attempt we most want rate-limited, and
+        # stamping only on success would retry it on every single session.
+        _record_fetch(stamp_path(root), time.time())
+        fetched, _ = _run_git(
+            ["fetch", "--quiet", remote], root,
+            timeout=_env_int("XYLEM_FETCH_TIMEOUT", FETCH_TIMEOUT_DEFAULT))
         if fetched:
             ok, out = _run_git(["show", "%s:manifest.json" % ref], root)
             if ok and out.strip():

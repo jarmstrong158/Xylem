@@ -16,10 +16,14 @@ at session end.
 | **Coordination** | [agentsync](https://github.com/jarmstrong158/agentsync) | A claim/release board with overlap detection and a human-in-the-loop mailbox, so parallel agents (and your phone) don't collide. Available locally and as a remote HTTP MCP server. |
 | **Knowledge** | [cambium](https://github.com/jarmstrong158/cambium) | Distills session outcomes into knowledge and promotes it team -> org through recall, generalization, and endorsement gates. |
 
-Memory and coordination run over MCP and are configured below. Knowledge runs through the
-`cambium` CLI and is optional — the plugin is fully usable without it; only the knowledge
-skills (`distill-session`, `recall-knowledge`, `promote-to-org`) and the automatic
-session-end distillation need it.
+Memory and coordination run over MCP and are configured below. Knowledge is optional —
+the plugin is fully usable without it; only the knowledge skills (`distill-session`,
+`recall-knowledge`, `promote-to-org`) and the automatic session-end distillation need it.
+cambium is an **MCP server** (`cambium_server.py`), not a command-line program: there is
+no `cambium` executable, and anything claiming to check for one on PATH is checking for
+something that has never existed. The plugin does not ship it — use the local installer,
+or point `XYLEM_CAMBIUM_PATH` at a `cambium_server.py` so the SessionEnd hook can find
+it.
 
 ## Plugin vs. the full installer — pick deliberately
 
@@ -37,7 +41,7 @@ and the difference matters most if you have not deployed the Cloudflare Workers.
 | Version-staleness nudge | ✗ | ✅ |
 | `/xylem-discipline` slash command | ✗ | ✅ |
 | Fenced `CLAUDE.md` habit block | ✗ | ✅ |
-| SessionEnd distill | via `cambium` CLI | in-process |
+| SessionEnd distill | calls `cambium_server.distill()` if a cambium checkout is found | in-process |
 | Needs a clone | ✗ | ✅ |
 | Needs deployed Workers | **✅** | ✗ (local-first) |
 
@@ -118,12 +122,12 @@ See the board without changing it.
 
 ### distill-session
 Harvest what this session learned into the local knowledge store.
-> "Distill this session." -> runs `cambium distill`; durable items cross to team scope via
-> the recall gate; says so if cambium is missing.
+> "Distill this session." -> calls cambium's `distill` tool; durable items cross to team
+> scope via the recall gate; says so if the cambium server is not connected.
 
 ### recall-knowledge
 Ask the federated org brain a cross-project question.
-> "What does the org know about token headers at the edge?" -> `cambium recall "..."`
+> "What does the org know about token headers at the edge?" -> cambium's `recall` tool
 > across projects; surfaces scope and `endorsed_as`. (Use recall-context for
 > project-local questions.)
 

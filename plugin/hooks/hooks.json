@@ -1,6 +1,27 @@
 {
+  "$comment": "GENERATED FILE -- do not edit by hand. Source: scripts/render_discipline.py (launch commands from xylem_interpreter.launch_command). Regenerate: python scripts/render_discipline.py --write. Each command is an interpreter FALLBACK CHAIN, not a bare name. The plugin has no install step -- Claude Code reads this file verbatim -- so the command cannot carry a resolved interpreter path, and dec-013 is about why it must not carry a bare name either: on a very common Windows box `python3` is the Microsoft Store shim (prints a notice, exits non-zero) while `python` works, and on most Linux/macOS boxes only `python3` exists. `A || B` means the same thing in cmd.exe and POSIX sh, and the non-zero exit is what makes the chain fall through to a real interpreter. Both hook scripts exit 0 on every path, so a chain can never run one of them twice.",
   "hooks": {
-    "SessionStart": [ { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/primer.py\"", "timeout": 10 } ] } ],
-    "SessionEnd":   [ { "hooks": [ { "type": "command", "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/distill.py\"", "timeout": 60 } ] } ]
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/primer.py\" || python \"${CLAUDE_PLUGIN_ROOT}/scripts/primer.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/distill.py\" || python \"${CLAUDE_PLUGIN_ROOT}/scripts/distill.py\"",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
   }
 }

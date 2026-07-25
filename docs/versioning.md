@@ -25,13 +25,27 @@ moment a new version was published upstream, before you'd pulled. That cost up t
 seconds of latency on every single session, on a slow or captive network, for a
 cosmetic notice.
 
-The fetch is now rate-limited and off by default:
+The fetch is rate-limited and off by default:
 
 - Set `XYLEM_FETCH_ON_CHECK=1` to re-enable the eager upstream check.
-- When enabled, it fetches at most once every 24 hours, with a 3-second timeout.
+- When enabled, it fetches at most once every 24 hours (`XYLEM_FETCH_INTERVAL`, in
+  seconds; `0` means every session), with a 3-second timeout (`XYLEM_FETCH_TIMEOUT`).
+  The SessionStart hook budget is 10 seconds in total, so even the once-a-day fetch is
+  bounded well inside it.
+- The last-attempt timestamp lives in `.git/xylem-fetch-stamp` — per-clone, never
+  committed, and overridable with `XYLEM_FETCH_STAMP`. It is written *before* the fetch,
+  not after: an attempt that hangs to its timeout is exactly the one worth rate-limiting,
+  and stamping only on success would retry it every session. If the stamp cannot be
+  written, the check still works; it just stops rate-limiting rather than failing.
 - Either way the comparison against your local clone still happens on every session,
   so a stale block is still caught — you just learn about brand-new upstream versions
   on your next pull instead of instantly.
+
+> This section described all of the above for some time before any of it was
+> implemented: the fetch actually defaulted **on**, ran with a **10-second** timeout, and
+> kept no cache, so every session start paid an unbounded network round-trip inside a
+> 10-second budget. The doc was the design; the code was the bug. It is now the code, and
+> `tests/test_version.py` fails if the defaults drift back.
 
 ## Trust boundary
 
