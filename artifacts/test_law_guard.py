@@ -126,3 +126,49 @@ class TestBashCoverage(unittest.TestCase):
         noisy = [name for name, cmd in BASH_QUIET if fire_bash(cmd)]
         self.assertEqual([], noisy,
                          "a guard that fires on git status gets ignored")
+
+
+PROSE_ONLY = [
+    ("a commit message mentioning sed -i and Claude",
+     "git add -A && git commit -q -m \"$(cat <<'EOF'\n"
+     "Coverage now includes Bash heredocs and sed -i rather than Edit.\n"
+     "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>\nEOF\n)\""),
+    ("a commit message naming a store",
+     "git commit -m 'fix decisions.json save path'"),
+    ("echoing a sentence about deleting", "echo 'we should rm the old cache'"),
+]
+
+
+class TestProseIsNotCode(unittest.TestCase):
+    """The hook fired on its own commit: the message said the hook had been
+    missing "sed -i" and was signed "Co-Authored-By: Claude", so the scan found
+    those strings in English and surfaced two irrelevant laws. Heredoc bodies
+    and -m messages are prose and must never be read as commands."""
+
+    def test_a_commit_message_is_not_a_write(self):
+        noisy = [name for name, cmd in PROSE_ONLY if fire_bash(cmd)]
+        self.assertEqual([], noisy)
+
+    def test_a_real_write_alongside_a_message_still_fires(self):
+        """Stripping prose must not blind the hook to the actual command."""
+        self.assertTrue(fire_bash(
+            "sed -i 's/v1/v2/' sw.js && git commit -m 'bump the shell'"))
+
+
+class TestBreakageIsVisible(unittest.TestCase):
+    def test_a_crash_is_recorded_not_swallowed(self):
+        """A rename left the Bash branch calling a deleted function and the
+        hook went quiet for every shell write, indistinguishable from having
+        nothing to say. Crashes must still exit 0, but must leave a trace."""
+        import tempfile
+        env = dict(os.environ, CAMBIUM_ORG_REPO=tempfile.mkdtemp())
+        p = subprocess.run([sys.executable, HOOK], input="{}",
+                           capture_output=True, text=True, timeout=20, env=env)
+        self.assertEqual(0, p.returncode)
+
+    def test_the_ledger_records_a_fire(self):
+        ledger = os.path.expanduser("~/.xylem/law-fires.jsonl")
+        before = os.path.getsize(ledger) if os.path.exists(ledger) else 0
+        fire_bash("sed -i 's/a/b/' sw.js")
+        after = os.path.getsize(ledger) if os.path.exists(ledger) else 0
+        self.assertGreater(after, before, "a fire must be measurable")

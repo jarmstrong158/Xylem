@@ -95,6 +95,49 @@ WRITE_SIGNS = (">", ">>", "sed -i", "tee ", "truncate", "mv ", "cp ",
                "shutil.", "rm ", "del ")
 
 
+def _scan_text(cmd):
+    """The part of a shell command that is CODE, with prose removed.
+
+    This hook fired on its own commit: the message said it had been missing
+    "sed -i" and was signed "Co-Authored-By: Claude", so the scan found those
+    strings in English and surfaced two irrelevant laws. But a heredoc is not
+    always prose -- one feeding python IS the write. So the rule is by
+    DESTINATION: a heredoc handed to an interpreter is code and is kept, and
+    everything else quoted is prose and is dropped.
+    """
+    keep, i, n = [], 0, len(cmd)
+    INTERP = ("python", "python3", "py ", "sh ", "bash", "node", "perl", "ruby")
+    while i < n:
+        c = cmd[i]
+        if cmd.startswith("<<", i):
+            j = i + 2
+            while j < n and cmd[j] in "-~":
+                j += 1
+            q = cmd[j] if j < n and cmd[j] in "'\"" else ""
+            j += 1 if q else 0
+            k = j
+            while k < n and (cmd[k].isalnum() or cmd[k] == "_"):
+                k += 1
+            tag = cmd[k - (k - j):k]
+            k += 1 if (q and k < n and cmd[k] == q) else 0
+            end_ = cmd.find(chr(10) + tag, k) if tag else -1
+            body = cmd[k:end_] if end_ >= 0 else cmd[k:]
+            # Kept only if an interpreter is reading it.
+            before = cmd[:i].lower()
+            if any(x in before for x in INTERP):
+                keep.append(body)
+            i = (end_ + 1 + len(tag)) if end_ >= 0 else n
+            continue
+        if c in "'\"":
+            close = cmd.find(c, i + 1)
+            i = (close + 1) if close > 0 else n      # quoted text is prose
+            keep.append(" ")
+            continue
+        keep.append(c)
+        i += 1
+    return "".join(keep)
+
+
 def _writes_a_file(cmd):
     """Only a Bash command that could MODIFY something is worth a law.
 
@@ -102,8 +145,17 @@ def _writes_a_file(cmd):
     on `git status` is noise -- which is how a guardrail gets ignored, and then
     it protects nothing.
     """
-    low = cmd.lower()
-    return any(sign in low for sign in WRITE_SIGNS)
+    low = _scan_text(cmd).lower()
+    if any(op in low for op in (">", ">>")):
+        return True
+    words = low.replace("&&", " ").replace("|", " ").replace(";", " ").split()
+    if any(w in ("tee", "mv", "cp", "rm", "truncate", "install") for w in words):
+        return True
+    if "sed" in words and "-i" in words:
+        return True
+    return any(sign in low for sign in
+               ("open(", "write_text", "writelines", "os.replace", "json.dump",
+                "shutil.", "'w'", '"w"'))
 
 
 def _log(target, laws, signals):
@@ -149,7 +201,7 @@ def main():
         cmd = str(ti.get("command") or "")
         if not _writes_a_file(cmd):
             return 0
-        target = cmd.replace("\\", "/").lower()[:4000]
+        target = _scan_text(cmd).replace("\\", "/").lower()[:4000]
         body = target
     else:
         return 0
@@ -191,7 +243,21 @@ def main():
 
 
 if __name__ == "__main__":
+    # Fails OPEN by contract -- a memory layer must never be the reason an edit
+    # did not happen. But a crash was indistinguishable from having nothing to
+    # say: a rename left the Bash branch calling a deleted function, and the
+    # hook simply went quiet for every shell write. A skipped step must not
+    # look like a completed one, so the ledger records the breakage.
     try:
         sys.exit(main())
-    except Exception:
+    except Exception as exc:
+        try:
+            from datetime import datetime, timezone
+            os.makedirs(os.path.dirname(FIRES), exist_ok=True)
+            with open(FIRES, "a", encoding="utf-8") as f:
+                f.write(json.dumps({
+                    "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                    "error": "%s: %s" % (type(exc).__name__, exc)}) + chr(10))
+        except Exception:
+            pass
         sys.exit(0)
