@@ -28,6 +28,7 @@ import sys
 
 ORG = os.environ.get("CAMBIUM_ORG_REPO", r"C:\Users\jarms\repos\knowledge")
 STORE = os.path.join(ORG, "knowledge.json")
+FIRES = os.path.join(os.path.expanduser("~"), ".xylem", "law-fires.jsonl")
 MAX_LAWS = 2
 
 # path/content signals -> words that must appear in a law for it to be relevant.
@@ -89,19 +90,71 @@ def _laws():
             and i.get("status", "active") == "active"]
 
 
+WRITE_SIGNS = (">", ">>", "sed -i", "tee ", "truncate", "mv ", "cp ",
+               "open(", "write_text", "dump(", "writelines", "os.replace",
+               "shutil.", "rm ", "del ")
+
+
+def _writes_a_file(cmd):
+    """Only a Bash command that could MODIFY something is worth a law.
+
+    Every shell call would otherwise pay for this hook, and a guard that fires
+    on `git status` is noise -- which is how a guardrail gets ignored, and then
+    it protects nothing.
+    """
+    low = cmd.lower()
+    return any(sign in low for sign in WRITE_SIGNS)
+
+
+def _log(target, laws, signals):
+    """Append one line per fire, so "does this help" becomes a number.
+
+    Nothing else records that a law was ever put in front of anyone. The only
+    other evidence available is recall counts, and those measure retrieval, not
+    influence -- by that measure a law read at every session start scores zero.
+    Appended, never rewritten: a ledger a process can rewrite is a ledger that
+    can lose the inconvenient half.
+
+    Fails silent like the rest of the hook. A memory layer must never be the
+    reason an edit did not happen.
+    """
+    try:
+        from datetime import datetime, timezone
+        os.makedirs(os.path.dirname(FIRES), exist_ok=True)
+        rec = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+               "file": target, "laws": laws, "signals": signals}
+        with open(FIRES, "a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + chr(10))
+    except Exception:
+        pass
+
+
 def main():
     try:
         payload = json.load(sys.stdin)
     except Exception:
         return 0
     tool = payload.get("tool_name") or ""
-    if tool not in ("Edit", "Write", "NotebookEdit"):
-        return 0
     ti = payload.get("tool_input") or {}
-    target = str(ti.get("file_path") or "").replace("\\", "/").lower()
+    if tool in ("Edit", "Write", "NotebookEdit"):
+        target = str(ti.get("file_path") or "").replace("\\", "/").lower()
+        body = (str(ti.get("new_string") or "")
+                + str(ti.get("content") or "")).lower()[:4000]
+    elif tool == "Bash":
+        # Measuring the hook revealed it was watching a door nobody uses: six
+        # fires in a day, every one from its own test harness, because most
+        # file modification here happens through heredocs and sed -i rather
+        # than the Edit tool. A guard on the Edit path only is a gate that is
+        # never open.
+        cmd = str(ti.get("command") or "")
+        if not _writes_a_file(cmd):
+            return 0
+        target = cmd.replace("\\", "/").lower()[:4000]
+        body = target
+    else:
+        return 0
     if not target:
         return 0
-    body = (str(ti.get("new_string") or "") + str(ti.get("content") or "")).lower()[:4000]
     hay = target + " " + body
 
     wanted = set()
@@ -126,6 +179,8 @@ def main():
         return 0
     scored.sort(reverse=True)
     hits = [t for _n, _l, t in scored[:MAX_LAWS]]
+
+    _log(target, [h[:120] for h in hits], sorted(wanted))
 
     lines = ["[xylem law] Relevant to what you are about to write:"]
     lines += ["  - " + h.strip().replace("\n", " ")[:300] for h in hits]

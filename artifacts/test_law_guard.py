@@ -90,3 +90,39 @@ class TestOpenRate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+BASH_WRITES = [
+    ("a heredoc rewriting the decision saver",
+     "python - <<'PY'\nio.open('tools/apply_queue.py','w').write(s)\nPY"),
+    ("sed -i on the service worker", "sed -i 's/v25/v26/' sw.js"),
+]
+BASH_QUIET = [
+    ("git status", "git status --porcelain"),
+    ("running the tests", "python -m pytest test_cambium.py -q"),
+    ("listing a directory", "ls -la tools/"),
+    ("reading a file", "cat README.md"),
+]
+
+
+def fire_bash(cmd):
+    p = subprocess.run(
+        [sys.executable, HOOK],
+        input=json.dumps({"tool_name": "Bash", "tool_input": {"command": cmd}}),
+        capture_output=True, text=True, timeout=20)
+    return p.stdout.strip()
+
+
+class TestBashCoverage(unittest.TestCase):
+    """The hook was measured and found to be watching a door nobody used: six
+    fires in a day, all from its own tests, because real edits go through
+    heredocs and sed. These pin the wider coverage AND its quiet half."""
+
+    def test_bash_edits_that_touch_guarded_code_fire(self):
+        missed = [name for name, cmd in BASH_WRITES if not fire_bash(cmd)]
+        self.assertEqual([], missed)
+
+    def test_read_only_commands_never_fire(self):
+        noisy = [name for name, cmd in BASH_QUIET if fire_bash(cmd)]
+        self.assertEqual([], noisy,
+                         "a guard that fires on git status gets ignored")
