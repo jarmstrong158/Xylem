@@ -40,13 +40,42 @@ CLASSES = (
                   "manifest", "index.html"),
      ("gate", "open-rate", "deploy", "verified")),
     ("detector", ("check", "verify", "detect", "audit", "quality", "lint",
-                  "monitor", "guard"),
+                  "monitor", "guard", "drift", "flag", "grep", "scan",
+                  "stale", "match"),
      ("signal that fires", "fires on", "cannot tell", "metric", "instrument")),
     ("spend", ("agent", "model", "claude", "api", "runner", "eval"),
      ("money", "metered", "billed")),
     ("skip", ("except", "try", "fallback", "default", "skip"),
      ("proceeding", "loud when it skips", "silently")),
+    # Deciding that work is FINISHED is its own action class. The sweep that
+    # would have closed every synthesis request on its first pass was written
+    # under this hook and got nothing: it saves no file, checks no metric, and
+    # spends no money -- it just quietly ruled that something was done.
+    ("lifecycle", ("done", "finish", "complete", "resolve", "close", "sweep",
+                   "prune", "retire", "dismiss", "archive"),
+     ("proceeding", "loud when it skips", "silently", "skipped step",
+      "cannot tell", "empty success")),
 )
+
+
+def _has_word(hay, needle):
+    """Substring matching put 'guard' inside 'vanguard' and served a metrics law
+    to a sprite generator. A signal that fires on the project's NAME is the
+    same bug the laws warn about, so signals match on word boundaries."""
+    n, start = len(needle), 0
+    while True:
+        i = hay.find(needle, start)
+        if i < 0:
+            return False
+        before = hay[i - 1] if i else " "
+        after = hay[i + n] if i + n < len(hay) else " "
+        # Only letters and digits continue a word. In code the separators ARE
+        # underscores, dots and slashes -- treating "_" as a word character
+        # meant save_decisions did not match "decisions", and that function is
+        # the one that destroyed 24 records.
+        if not before.isalnum() and not after.isalnum():
+            return True
+        start = i + 1
 
 
 def _laws():
@@ -77,21 +106,26 @@ def main():
 
     wanted = set()
     for _name, signals, keys in CLASSES:
-        if any(s in hay for s in signals):
+        if any(_has_word(hay, s) for s in signals):
             wanted.update(keys)
     if not wanted:
         return 0
 
-    hits = []
+    # RANK, never first-match-wins. The old loop broke on the first two laws it
+    # met in file order, which served a metrics-regime law ahead of "be loud
+    # when you skip" for a broken detector -- the right law was present and
+    # second, which is the same as absent when only two are shown.
+    scored = []
     for law in _laws():
         text = str(law.get("content") or "")
         low = text.lower()
-        if any(k in low for k in wanted):
-            hits.append(text)
-        if len(hits) >= MAX_LAWS:
-            break
-    if not hits:
+        n = sum(1 for k in wanted if k in low)
+        if n:
+            scored.append((n, -len(text), text))
+    if not scored:
         return 0
+    scored.sort(reverse=True)
+    hits = [t for _n, _l, t in scored[:MAX_LAWS]]
 
     lines = ["[xylem law] Relevant to what you are about to write:"]
     lines += ["  - " + h.strip().replace("\n", " ")[:300] for h in hits]
